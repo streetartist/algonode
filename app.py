@@ -2081,6 +2081,16 @@ if __name__ == "__main__":
         print(f"[AlgoNode] Central server: {CENTRAL_SERVER_URL}")
     print(f"[AlgoNode] Mode: {ALGONODE_MODE}")
     
+    # Auto-open browser if not in server mode
+    if ALGONODE_MODE != "server":
+        # Avoid opening twice when debug reloader is active
+        if not debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+            import webbrowser
+            from threading import Timer
+            def open_browser():
+                webbrowser.open(f"http://127.0.0.1:{port}")
+            Timer(1.5, open_browser).start()
+
     app.run(host=host, port=port, debug=debug)
 
     # This way requires python installation at runtime.
