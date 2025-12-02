@@ -1932,7 +1932,6 @@ def market_config():
     # to the server's own address and would otherwise show as "已连接..." on
     # the server instance). Instead return an explicit flag.
     central = None
-<<<<<<< HEAD
     connected = False
     
     if CENTRAL_SERVER_URL and ALGONODE_MODE != "server":
@@ -1945,18 +1944,11 @@ def market_config():
                 connected = True
         except:
             connected = False
-=======
-    if CENTRAL_SERVER_URL and ALGONODE_MODE != "server":
-        central = CENTRAL_SERVER_URL
->>>>>>> aa39a688c409ac0360e5af4901d7a6170810f9e5
 
     return jsonify({
         "ok": True,
         "central_server": central,
-<<<<<<< HEAD
         "connected": connected,
-=======
->>>>>>> aa39a688c409ac0360e5af4901d7a6170810f9e5
         "mode": ALGONODE_MODE,
         "is_central_server": ALGONODE_MODE == "server"
     })
