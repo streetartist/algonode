@@ -434,6 +434,7 @@ registerNode("data/normalize", "Data Normalization", [["Data", "array"]], [["Nor
 registerNode("data/split", "Train Test Split", [["X", "array"], ["y", "array"]], [["X_train", "array"], ["X_test", "array"], ["y_train", "array"], ["y_test", "array"]], { test_size: 0.2, random_state: 42 }, "text");
 registerNode("data/load_csv", "Load CSV", [], [["Data", "matrix"]], { path: "data.csv", header: 0 }, "text");
 registerNode("data/load_excel", "Load Excel", [], [["Data", "matrix"]], { path: "data.xlsx", sheet: 0 }, "text");
+registerNode("data/select_column", "Select Column", [["Data", "matrix"]], [["Column", "array"]], { index: 0 }, "text");
 
 // Visualization
 registerNode("viz/plot_line", "Line Plot", [["X", "array"], ["Y", "array"]], [], { title: "Line Plot" }, "text");
@@ -481,6 +482,7 @@ const nodeCategories = [
             { type: "data/matrix", label: "矩阵" },
             { type: "data/load_csv", label: "读取 CSV" },
             { type: "data/load_excel", label: "读取 Excel" },
+            { type: "data/select_column", label: "选择列" },
             { type: "io/output", label: "输出节点" }
         ]
     },
@@ -1608,6 +1610,163 @@ function showToast(message, type = "success", duration = 3000) {
         }
     });
     
+})();
+
+// ---------------------------
+// Data Manager System
+// ---------------------------
+(function() {
+    const btnDataManager = document.getElementById("btnDataManager");
+    const dataModal = document.getElementById("dataModal");
+    const closeDataModal = document.getElementById("closeDataModal");
+    const dataFileList = document.getElementById("dataFileList");
+    const btnSelectFile = document.getElementById("btnSelectFile");
+    const dataFileUpload = document.getElementById("dataFileUpload");
+    const uploadStatus = document.getElementById("uploadStatus");
+
+    if (btnDataManager) {
+        btnDataManager.onclick = function() {
+            dataModal.classList.remove("hidden");
+            loadDataFiles();
+        };
+    }
+
+    if (closeDataModal) {
+        closeDataModal.onclick = function() {
+            dataModal.classList.add("hidden");
+        };
+    }
+    
+    // Close on outside click
+    window.addEventListener("click", function(event) {
+        if (event.target == dataModal) {
+            dataModal.classList.add("hidden");
+        }
+    });
+
+    function loadDataFiles() {
+        dataFileList.innerHTML = '<div style="padding: 20px; text-align: center; color: #666;">加载中...</div>';
+        
+        fetch("/api/data/list")
+            .then(res => res.json())
+            .then(data => {
+                if (data.ok) {
+                    renderDataFiles(data.files);
+                } else {
+                    dataFileList.innerHTML = '<div style="padding: 20px; text-align: center; color: #f44336;">加载失败</div>';
+                }
+            })
+            .catch(err => {
+                dataFileList.innerHTML = '<div style="padding: 20px; text-align: center; color: #f44336;">网络错误</div>';
+            });
+    }
+
+    function renderDataFiles(files) {
+        if (files.length === 0) {
+            dataFileList.innerHTML = '<div style="padding: 20px; text-align: center; color: #666;">暂无文件</div>';
+            return;
+        }
+
+        dataFileList.innerHTML = "";
+        files.forEach(file => {
+            const item = document.createElement("div");
+            item.className = "market-item"; // Reuse market item style
+            item.style.flexDirection = "row";
+            item.style.alignItems = "center";
+            item.style.justifyContent = "space-between";
+            item.style.marginBottom = "10px";
+            
+            const info = document.createElement("div");
+            info.innerHTML = `
+                <h4 style="margin: 0; color: #eee;">${file.name}</h4>
+                <div class="meta" style="margin: 0;">Size: ${(file.size / 1024).toFixed(2)} KB</div>
+            `;
+            
+            const actions = document.createElement("div");
+            actions.style.display = "flex";
+            actions.style.gap = "10px";
+            
+            const btnCopy = document.createElement("button");
+            btnCopy.innerText = "📋 复制路径";
+            btnCopy.className = "primary-btn";
+            btnCopy.style.padding = "5px 10px";
+            btnCopy.style.fontSize = "12px";
+            btnCopy.onclick = () => {
+                // Escape backslashes for Python string
+                const pythonPath = file.path.replace(/\\/g, "/");
+                navigator.clipboard.writeText(pythonPath).then(() => {
+                    showToast("路径已复制到剪贴板");
+                });
+            };
+            
+            const btnDelete = document.createElement("button");
+            btnDelete.innerText = "🗑️ 删除";
+            btnDelete.style.padding = "5px 10px";
+            btnDelete.style.fontSize = "12px";
+            btnDelete.style.background = "#d32f2f";
+            btnDelete.style.border = "none";
+            btnDelete.style.color = "white";
+            btnDelete.onclick = () => {
+                if(confirm(`确定要删除 ${file.name} 吗?`)) {
+                    fetch(`/api/data/delete/${file.name}`, { method: "DELETE" })
+                        .then(res => res.json())
+                        .then(data => {
+                            if (data.ok) {
+                                showToast("删除成功");
+                                loadDataFiles();
+                            } else {
+                                showToast("删除失败: " + data.error, "error");
+                            }
+                        });
+                }
+            };
+            
+            actions.appendChild(btnCopy);
+            actions.appendChild(btnDelete);
+            
+            item.appendChild(info);
+            item.appendChild(actions);
+            dataFileList.appendChild(item);
+        });
+    }
+
+    if (btnSelectFile) {
+        btnSelectFile.onclick = () => dataFileUpload.click();
+    }
+
+    if (dataFileUpload) {
+        dataFileUpload.onchange = function() {
+            if (this.files.length === 0) return;
+            
+            const file = this.files[0];
+            const formData = new FormData();
+            formData.append("file", file);
+            
+            uploadStatus.innerText = "上传中...";
+            btnSelectFile.disabled = true;
+            
+            fetch("/api/data/upload", {
+                method: "POST",
+                body: formData
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.ok) {
+                    showToast("上传成功");
+                    loadDataFiles();
+                } else {
+                    showToast("上传失败: " + data.error, "error");
+                }
+            })
+            .catch(err => showToast("网络错误", "error"))
+            .finally(() => {
+                uploadStatus.innerText = "支持 CSV, Excel 等格式";
+                btnSelectFile.disabled = false;
+                dataFileUpload.value = ""; // Reset
+            });
+        };
+    }
+
 })();
 
 

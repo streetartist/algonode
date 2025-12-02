@@ -125,16 +125,22 @@
       <div id="nodeList" class="node-list">
         <!-- Categories and nodes will be rendered here by JS -->
       </div>
-      <div class="actions">
-        <button id="btnRun" class="primary-btn">运行模型</button>
-        <button id="btnExport">导出 Python 代码</button>
-        <button id="btnSaveLocal">保存到本地</button>
-        <button id="btnLoadLocal">打开本地文件</button>
-        <input type="file" id="fileInput" style="display: none;" accept=".json" />
-        <button id="btnSample">载入示例</button>
-        <button id="btnMarket" style="margin-top: 10px; background: #FF9800;">节点市场</button>
-        <button id="btnPublish" style="margin-top: 5px; background: #9C27B0;">发布作品</button>
-        <button id="btnAbout" style="margin-top: 10px; background: #2a3a5a;">关于 AlgoNode</button>
+      <div class="category" style="margin-top: 10px; flex-shrink: 0;">
+        <div class="category-header" onclick="this.parentElement.classList.toggle('collapsed')">
+          🔧 工具箱
+        </div>
+        <div class="category-content actions" style="border-top: none; padding: 5px;">
+          <button id="btnRun" class="primary-btn">运行模型</button>
+          <button id="btnExport">导出 Python 代码</button>
+          <button id="btnSaveLocal">保存到本地</button>
+          <button id="btnLoadLocal">打开本地文件</button>
+          <input type="file" id="fileInput" style="display: none;" accept=".json" />
+          <button id="btnSample">载入示例</button>
+          <button id="btnMarket" style="margin-top: 10px; background: #FF9800;">节点市场</button>
+          <button id="btnDataManager" style="margin-top: 5px; background: #009688;">📂 数据管理</button>
+          <button id="btnPublish" style="margin-top: 5px; background: #9C27B0;">发布作品</button>
+          <button id="btnAbout" style="margin-top: 10px; background: #2a3a5a;">关于 AlgoNode</button>
+        </div>
       </div>
     </div>
     <div class="canvas-wrap">
@@ -179,7 +185,7 @@
         <h2 style="margin: 0 0 10px 0; color: #4CAF50;">AlgoNode</h2>
         <p style="color: #aaa; margin-bottom: 20px;">可视化数学建模平台</p>
         <div style="text-align: left; background: #2a2a2a; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
-          <p style="margin: 8px 0;"><strong>版本：</strong>v0.4.1</p>
+          <p style="margin: 8px 0;"><strong>版本：</strong>v0.5.1</p>
           <p style="margin: 8px 0;"><strong>作者：</strong>电子科技大学 闻家贤</p>
           <p style="margin: 8px 0;"><strong>开源仓库：</strong><a href="https://github.com/streetartist/algonode" target="_blank" style="color: #4CAF50;">github.com/streetartist/algonode</a></p>
         </div>
@@ -256,6 +262,25 @@
             <textarea id="uploadDesc" class="full-width" rows="4" placeholder="介绍一下这个作品的功能..." style="width: 100%; padding: 8px; background: #222; border: 1px solid #444; color: #eee;"></textarea>
         </div>
         <button id="btnDoUpload" class="primary-btn" style="margin-top: 10px; width: 100%; padding: 10px;">确认发布</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Data Manager Modal -->
+  <div id="dataModal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>数据文件管理</h3>
+        <span class="close" id="closeDataModal">&times;</span>
+      </div>
+      <div style="margin-bottom: 15px; padding: 15px; background: #222; border-radius: 4px; border: 1px solid #444;">
+          <input type="file" id="dataFileUpload" style="display: none;">
+          <button id="btnSelectFile" class="primary-btn">📤 上传新文件</button>
+          <span id="uploadStatus" style="margin-left: 10px; color: #aaa; font-size: 13px;">支持 CSV, Excel 等格式</span>
+      </div>
+      <div id="dataFileList" style="max-height: 400px; overflow-y: auto; border: 1px solid #444; border-radius: 4px;">
+          <!-- File items will be here -->
+          <div style="padding: 20px; text-align: center; color: #666;">加载中...</div>
       </div>
     </div>
   </div>

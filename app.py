@@ -1189,6 +1189,17 @@ def generate_scope(graph_data: Dict[str, Any], initial_varmap: Dict[int, Any] = 
         add(f"    {name} = np.array([])")
         return name
 
+    def gen_select_column(node, inputs):
+        data = inputs[0][1] if len(inputs) > 0 else "np.array([])"
+        name = default_var_name(node)
+        col_idx = node.get("properties", {}).get("index", 0)
+        add(f"# Select Column {col_idx}")
+        add(f"try:")
+        add(f"    {name} = {data}[:, {col_idx}]")
+        add(f"except Exception:")
+        add(f"    {name} = np.array([])")
+        return name
+
     def gen_custom_python(node, inputs):
         name = default_var_name(node)
         code = node.get("properties", {}).get("code", "")
@@ -1363,6 +1374,7 @@ def generate_scope(graph_data: Dict[str, Any], initial_varmap: Dict[int, Any] = 
         "data/split": gen_train_test_split,
         "data/load_csv": gen_load_csv,
         "data/load_excel": gen_load_excel,
+        "data/select_column": gen_select_column,
 
         # Visualization
         "viz/plot_line": gen_plot_line,
@@ -1666,6 +1678,56 @@ def update_library_node(lib_id):
         return jsonify({"ok": True, "message": "已更新"})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 400
+
+
+# -------------------------
+# Data Management
+# -------------------------
+DATA_DIR = os.path.join(os.path.dirname(__file__), "uploads")
+if not os.path.exists(DATA_DIR):
+    os.makedirs(DATA_DIR)
+
+@app.route("/api/data/list", methods=["GET"])
+def list_data_files():
+    files = []
+    if os.path.exists(DATA_DIR):
+        for f in os.listdir(DATA_DIR):
+            path = os.path.join(DATA_DIR, f)
+            if os.path.isfile(path):
+                size = os.path.getsize(path)
+                files.append({
+                    "name": f,
+                    "size": size,
+                    "path": path.replace("\\", "/") # Normalize for JS
+                })
+    return jsonify({"ok": True, "files": files})
+
+@app.route("/api/data/upload", methods=["POST"])
+def upload_data_file():
+    if 'file' not in request.files:
+        return jsonify({"ok": False, "error": "No file part"}), 400
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({"ok": False, "error": "No selected file"}), 400
+    if file:
+        filename = file.filename
+        # Basic security: prevent directory traversal
+        filename = os.path.basename(filename)
+        file.save(os.path.join(DATA_DIR, filename))
+        return jsonify({"ok": True, "message": "File uploaded successfully"})
+    return jsonify({"ok": False, "error": "Upload failed"}), 400
+
+@app.route("/api/data/delete/<filename>", methods=["DELETE"])
+def delete_data_file(filename):
+    filename = os.path.basename(filename)
+    path = os.path.join(DATA_DIR, filename)
+    if os.path.exists(path):
+        try:
+            os.remove(path)
+            return jsonify({"ok": True, "message": "Deleted"})
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+    return jsonify({"ok": False, "error": "File not found"}), 404
 
 
 @app.route("/export", methods=["POST"])
