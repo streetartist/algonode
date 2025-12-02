@@ -1254,7 +1254,6 @@ function closeAboutModal() {
                 centralServerInfo.classList.remove("hidden", "disconnected");
                 centralServerInfo.innerHTML = "✅ 中央服务器服务正常";
             } else if (marketConfig.central_server) {
-<<<<<<< HEAD
                 centralServerInfo.classList.remove("hidden");
                 if (marketConfig.connected) {
                     centralServerInfo.classList.remove("disconnected");
@@ -1263,10 +1262,6 @@ function closeAboutModal() {
                     centralServerInfo.classList.add("disconnected");
                     centralServerInfo.innerHTML = "⚠️ 无法连接中央服务器: " + marketConfig.central_server;
                 }
-=======
-                centralServerInfo.classList.remove("hidden", "disconnected");
-                centralServerInfo.innerHTML = "🌐 已连接中央服务器: " + marketConfig.central_server;
->>>>>>> aa39a688c409ac0360e5af4901d7a6170810f9e5
             } else {
                 centralServerInfo.classList.add("hidden");
             }
@@ -1274,13 +1269,8 @@ function closeAboutModal() {
         
         // Show/hide upload target option based on config
         if (uploadTargetGroup) {
-<<<<<<< HEAD
             // Only allow selecting the remote target when a central server is configured AND connected
             if (marketConfig.central_server && !marketConfig.is_central_server && marketConfig.connected) {
-=======
-            // Only allow selecting the remote target when a central server is configured
-            if (marketConfig.central_server && !marketConfig.is_central_server) {
->>>>>>> aa39a688c409ac0360e5af4901d7a6170810f9e5
                 uploadTargetGroup.style.display = "block";
             } else {
                 uploadTargetGroup.style.display = "none";
