@@ -668,14 +668,14 @@ function addNodeToLibrary(node) {
     .then(res => res.json())
     .then(data => {
         if (data.ok) {
-            alert(data.message);
+            showToast(data.message);
             loadUserLibrary().then(() => renderSidebar());
         } else {
-            alert("保存失败: " + data.error);
+            showToast("保存失败: " + data.error, "error");
         }
     })
     .catch(err => {
-        alert("保存失败: " + err);
+        showToast("保存失败: " + err, "error");
     });
 }
 
@@ -688,7 +688,7 @@ function deleteFromLibrary(libId, name) {
             if (data.ok) {
                 loadUserLibrary().then(() => renderSidebar());
             } else {
-                alert("删除失败: " + data.error);
+                showToast("删除失败: " + data.error, "error");
             }
         });
 }
@@ -1007,10 +1007,10 @@ document.getElementById("btnExport").addEventListener("click", () => {
             setTimeout(() => exportEditor.refresh(), 10);
             document.getElementById("codeModal").classList.remove("hidden");
         } else {
-            alert("Error: " + json.error);
+            showToast("Error: " + json.error, "error");
         }
     })
-    .catch(err => alert("Network Error: " + err));
+    .catch(err => showToast("Network Error: " + err, "error"));
 });
 
 document.getElementById("closeModal").addEventListener("click", () => {
@@ -1045,7 +1045,7 @@ document.getElementById("btnRun").addEventListener("click", () => {
         modal.style.display = "flex";
     })
     .catch(err => {
-        alert("Error running model: " + err);
+        showToast("Error running model: " + err, "error");
     });
 });
 
@@ -1074,7 +1074,7 @@ document.getElementById("fileInput").addEventListener("change", (e) => {
             var data = JSON.parse(e.target.result);
             graph.configure(data);
         } catch(err) {
-            alert("Invalid JSON file");
+            showToast("Invalid JSON file", "error");
         }
     };
     reader.readAsText(file);
@@ -1405,19 +1405,19 @@ function closeAboutModal() {
             if (data.ok) {
                 if (data.type === "project") {
                     graph.configure(data.content);
-                    alert("项目加载成功！");
+                    showToast("项目加载成功！");
                     marketModal.classList.add("hidden");
                 } else {
                     // subgraph or node imported to library
-                    alert("已导入到用户库！请刷新页面以在节点库中查看。");
+                    showToast("已导入到用户库！请刷新页面以在节点库中查看。", "info");
                     // Optionally reload user library
                     loadUserLibrary().then(() => renderSidebar());
                 }
             } else {
-                alert("导入失败: " + data.error);
+                showToast("导入失败: " + data.error, "error");
             }
         })
-        .catch(err => alert("网络错误"));
+        .catch(err => showToast("网络错误", "error"));
     };
 
     if (btnDoUpload) {
@@ -1428,7 +1428,7 @@ function closeAboutModal() {
             var type = document.getElementById("uploadType").value;
             var target = uploadTargetSelect ? uploadTargetSelect.value : "local";
             
-            if (!name) { alert("请输入名称"); return; }
+            if (!name) { showToast("请输入名称", "warning"); return; }
             
             var content = null;
             
@@ -1439,11 +1439,11 @@ function closeAboutModal() {
                 var selected = canvas.selected_nodes;
                 var selectedArr = selected ? Object.values(selected) : [];
                 if (selectedArr.length !== 1) {
-                    alert("请先在画布上选中一个子图节点"); return;
+                    showToast("请先在画布上选中一个子图节点", "warning"); return;
                 }
                 var node = selectedArr[0];
                 if (node.type !== "graph/subgraph") {
-                    alert("选中的节点不是子图，请选择一个子图节点"); return;
+                    showToast("选中的节点不是子图，请选择一个子图节点", "warning"); return;
                 }
                 // Serialize the subgraph node
                 var nodeData = node.serialize();
@@ -1456,11 +1456,11 @@ function closeAboutModal() {
                 var selected = canvas.selected_nodes;
                 var selectedArr = selected ? Object.values(selected) : [];
                 if (selectedArr.length !== 1) {
-                    alert("请先在画布上选中一个节点"); return;
+                    showToast("请先在画布上选中一个节点", "warning"); return;
                 }
                 var node = selectedArr[0];
                 if (node.type === "graph/subgraph") {
-                    alert("这是一个子图节点，请选择类型为'子图'进行上传"); return;
+                    showToast("这是一个子图节点，请选择类型为'子图'进行上传", "warning"); return;
                 }
                 content = node.serialize();
             }
@@ -1482,16 +1482,16 @@ function closeAboutModal() {
             .then(res => res.json())
             .then(data => {
                 if (data.ok) {
-                    alert("发布成功！");
+                    showToast("发布成功！");
                     uploadModal.classList.add("hidden");
                     // Clear form
                     document.getElementById("uploadName").value = "";
                     document.getElementById("uploadDesc").value = "";
                 } else {
-                    alert("发布失败: " + data.error);
+                    showToast("发布失败: " + data.error, "error");
                 }
             })
-            .catch(err => alert("网络错误"))
+            .catch(err => showToast("网络错误", "error"))
             .finally(() => {
                 btnDoUpload.innerText = "确认发布";
                 btnDoUpload.disabled = false;
@@ -1499,6 +1499,115 @@ function closeAboutModal() {
         }
     }
 
+})();
+
+// ---------------------------
+// Toast Notification System
+// ---------------------------
+function showToast(message, type = "success", duration = 3000) {
+    const container = document.getElementById("toast-container");
+    if (!container) return;
+    
+    const toast = document.createElement("div");
+    toast.className = `toast ${type}`;
+    toast.innerHTML = `<span>${message}</span>`;
+    
+    container.appendChild(toast);
+    
+    setTimeout(() => {
+        toast.style.animation = "fadeOut 0.5s ease-out forwards";
+        setTimeout(() => {
+            if (toast.parentNode) toast.parentNode.removeChild(toast);
+        }, 500);
+    }, duration);
+}
+
+// ---------------------------
+// Auto-save & Shortcuts
+// ---------------------------
+(function() {
+    const AUTOSAVE_KEY = "algonode_autosave";
+    let lastSaveTime = 0;
+    let hasUnsavedChanges = false;
+    
+    // Check for autosave on load
+    const savedData = localStorage.getItem(AUTOSAVE_KEY);
+    if (savedData) {
+        try {
+            const data = JSON.parse(savedData);
+            // Only restore if graph is empty (default state)
+            if (graph._nodes.length === 0) {
+                // Simple check: if it's a fresh load, maybe just restore?
+                // Or show a toast with action
+                showToast("已恢复上次未保存的工作", "info");
+                graph.configure(data);
+            }
+        } catch(e) {
+            console.error("Failed to restore autosave", e);
+        }
+    }
+    
+    // Auto-save logic
+    function autoSave() {
+        if (!hasUnsavedChanges) return;
+        
+        const data = graph.serialize();
+        localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(data));
+        hasUnsavedChanges = false;
+        lastSaveTime = Date.now();
+        // showToast("自动保存成功", "info", 1000); // Optional: too many toasts might be annoying
+    }
+    
+    // Track changes
+    // LiteGraph doesn't have a generic 'change' event for everything, but we can hook into canvas events
+    // A simple way is to check periodically if serialization changed, but that's heavy.
+    // Better: hook into mouseup (drag end) and specific graph events.
+    
+    function markChanged() {
+        hasUnsavedChanges = true;
+    }
+    
+    canvas.onMouseUp = function(e) {
+        if (e.which === 1) markChanged(); // Left click release usually means an action finished
+        // Call original if needed, but LiteGraph assigns this directly usually.
+        // To be safe, we should have preserved original, but LiteGraph's architecture is a bit raw.
+        // Actually, LGraphCanvas.prototype.onMouseUp handles logic. We are overriding the instance method.
+        // Let's use a safer approach: graph events.
+    };
+    
+    // Graph events
+    graph.onNodeAdded = markChanged;
+    graph.onNodeRemoved = markChanged;
+    graph.onNodeConnectionChange = markChanged;
+    
+    // Save every 30 seconds if changed
+    setInterval(autoSave, 30000);
+    
+    // Save on page unload
+    window.addEventListener("beforeunload", () => {
+        if (hasUnsavedChanges) {
+            const data = graph.serialize();
+            localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(data));
+        }
+    });
+    
+    // Keyboard Shortcuts
+    document.addEventListener("keydown", function(e) {
+        // Ctrl + S : Save Local
+        if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+            e.preventDefault();
+            document.getElementById("btnSaveLocal").click();
+            showToast("已保存到本地文件");
+        }
+        
+        // Ctrl + Enter : Run
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+            e.preventDefault();
+            document.getElementById("btnRun").click();
+            showToast("开始运行模型...", "info");
+        }
+    });
+    
 })();
 
 
