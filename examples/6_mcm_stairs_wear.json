@@ -1,0 +1,227 @@
+{
+  "last_node_id": 15,
+  "last_link_id": 12,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "data/vector",
+      "pos": [50, 50],
+      "size": [250, 100],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "properties": {
+        "name": "stair_width_cm",
+        "values": "0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100"
+      },
+      "outputs": [
+        { "name": "Vector", "type": "array", "links": [1] }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "data/vector",
+      "pos": [50, 200],
+      "size": [250, 100],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "properties": {
+        "name": "measured_wear_depth_mm",
+        "values": "0.5, 0.8, 1.5, 3.2, 5.8, 7.5, 6.2, 3.5, 1.8, 0.9, 0.6"
+      },
+      "outputs": [
+        { "name": "Vector", "type": "array", "links": [2, 4] }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "model/polynomial_fitting",
+      "pos": [400, 50],
+      "size": [250, 100],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "properties": {
+        "name": "wear_profile_fit",
+        "degree": 2
+      },
+      "inputs": [
+        { "name": "X", "type": "array", "link": 1 },
+        { "name": "y", "type": "array", "link": 2 }
+      ],
+      "outputs": [
+        { "name": "Coeffs", "type": "array", "links": [3] }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "algo/exhaustive_search",
+      "pos": [400, 200],
+      "size": [250, 80],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "properties": {},
+      "inputs": [
+        { "name": "Data", "type": "array", "link": 4 }
+      ],
+      "outputs": [
+        { "name": "Best", "type": "number", "links": [5] }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "math/constant",
+      "pos": [400, 350],
+      "size": [200, 80],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "properties": {
+        "name": "wear_rate_per_year",
+        "value": 0.15
+      },
+      "outputs": [
+        { "name": "Value", "type": "number", "links": [6] }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "math/divide",
+      "pos": [700, 250],
+      "size": [200, 80],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "properties": {},
+      "inputs": [
+        { "name": "A", "type": "number", "link": 5 },
+        { "name": "B", "type": "number", "link": 6 }
+      ],
+      "outputs": [
+        { "name": "Result", "type": "number", "links": [7] }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "io/output",
+      "pos": [950, 50],
+      "size": [200, 60],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "properties": { "name": "profile_coeffs" },
+      "inputs": [
+        { "name": "In", "type": "", "link": 3 }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "io/output",
+      "pos": [950, 150],
+      "size": [200, 60],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "properties": { "name": "max_depth_mm" },
+      "inputs": [
+        { "name": "In", "type": "", "link": 5 }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "io/output",
+      "pos": [950, 250],
+      "size": [200, 60],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "properties": { "name": "estimated_age_years" },
+      "inputs": [
+        { "name": "In", "type": "", "link": 7 }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "math/constant",
+      "pos": [50, 400],
+      "size": [200, 80],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "properties": {
+        "name": "stair_center_cm",
+        "value": 50
+      },
+      "outputs": [
+        { "name": "Value", "type": "number", "links": [8] }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "algo/root_finding",
+      "pos": [700, 50],
+      "size": [200, 80],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "properties": {},
+      "inputs": [
+        { "name": "Coeffs", "type": "array", "link": 3 }
+      ],
+      "outputs": [
+        { "name": "Roots", "type": "array", "links": [11] }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "math/constant",
+      "pos": [50, 500],
+      "size": [200, 80],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "properties": {
+        "name": "traffic_volume_daily",
+        "value": 500
+      },
+      "outputs": [
+        { "name": "Value", "type": "number", "links": [] }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "io/output",
+      "pos": [950, 350],
+      "size": [200, 60],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "properties": { "name": "wear_edges_roots" },
+      "inputs": [
+        { "name": "In", "type": "", "link": 11 }
+      ]
+    }
+  ],
+  "links": [
+    [1, 1, 0, 3, 0, "array"],
+    [2, 2, 0, 3, 1, "array"],
+    [3, 3, 0, 7, 0, "array"],
+    [4, 2, 0, 4, 0, "array"],
+    [5, 4, 0, 6, 0, "number"],
+    [6, 5, 0, 6, 1, "number"],
+    [7, 6, 0, 9, 0, "number"],
+    [8, 10, 0, 11, 0, "number"],
+    [9, 4, 0, 8, 0, "number"],
+    [10, 3, 0, 11, 0, "array"],
+    [11, 11, 0, 13, 0, "array"]
+  ],
+  "groups": [],
+  "config": {
+    "title": "MCM 2025 Prob A: Stair Wear Analysis",
+    "description": "Estimating age and traffic patterns from stair wear depth profiles"
+  },
+  "extra": {},
+  "version": 0.4
+}

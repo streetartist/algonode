@@ -1,0 +1,145 @@
+{
+  "last_node_id": 8,
+  "last_link_id": 6,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "data/matrix",
+      "pos": [40, 60],
+      "size": [240, 110],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "properties": {
+        "name": "road_graph",
+        "rows": "0, 12, 0, 30; 12, 0, 18, 0; 0, 18, 0, 14; 30, 0, 14, 0"
+      },
+      "outputs": [
+        { "name": "Matrix", "type": "matrix", "links": [1] }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "data/vector",
+      "pos": [40, 220],
+      "size": [220, 90],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "properties": {
+        "name": "convoy_cost",
+        "values": "55, 48, 62, 50"
+      },
+      "outputs": [
+        { "name": "Vector", "type": "array", "links": [2] }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "data/matrix",
+      "pos": [40, 360],
+      "size": [240, 120],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "properties": {
+        "name": "capacity_constraints",
+        "rows": "1, 1, 0, 0; 0, 1, 1, 0; 0, 0, 1, 1; 1, 0, 0, 1"
+      },
+      "outputs": [
+        { "name": "Matrix", "type": "matrix", "links": [3] }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "data/vector",
+      "pos": [40, 520],
+      "size": [220, 90],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "properties": {
+        "name": "demand_bounds",
+        "values": "800, 600, 500, 700"
+      },
+      "outputs": [
+        { "name": "Vector", "type": "array", "links": [4] }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "algo/dijkstra",
+      "pos": [340, 80],
+      "size": [240, 100],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "properties": { "start": 0 },
+      "inputs": [
+        { "name": "Graph", "type": "matrix", "link": 1 }
+      ],
+      "outputs": [
+        { "name": "Distances", "type": "array", "links": [5] }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "algo/linear_programming",
+      "pos": [360, 360],
+      "size": [250, 120],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "properties": {},
+      "inputs": [
+        { "name": "c", "type": "array", "link": 2 },
+        { "name": "A_ub", "type": "matrix", "link": 3 },
+        { "name": "b_ub", "type": "array", "link": 4 }
+      ],
+      "outputs": [
+        { "name": "Solution", "type": "array", "links": [6] }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "io/output",
+      "pos": [640, 120],
+      "size": [200, 70],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "properties": { "name": "evac_route_cost" },
+      "inputs": [
+        { "name": "In", "type": "", "link": 5 }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "io/output",
+      "pos": [640, 420],
+      "size": [200, 70],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "properties": { "name": "convoy_allocation" },
+      "inputs": [
+        { "name": "In", "type": "", "link": 6 }
+      ]
+    }
+  ],
+  "links": [
+    [1, 1, 0, 5, 0, "matrix"],
+    [2, 2, 0, 6, 0, "array"],
+    [3, 3, 0, 6, 1, "matrix"],
+    [4, 4, 0, 6, 2, "array"],
+    [5, 5, 0, 7, 0, "array"],
+    [6, 6, 0, 8, 0, "array"]
+  ],
+  "groups": [],
+  "config": {
+    "title": "US MCM Hurricane Evacuation Logistics",
+    "description": "Combines shortest path estimation with linear programming to allocate evacuation convoys"
+  },
+  "extra": {},
+  "version": 0.4
+}

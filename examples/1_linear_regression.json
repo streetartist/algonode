@@ -1,0 +1,49 @@
+{
+  "last_node_id": 6,
+  "last_link_id": 5,
+  "nodes": [
+    {
+      "id": 1, "type": "data/vector", "pos": [50, 50], "size": [210, 82], "flags": {}, "order": 0, "mode": 0,
+      "properties": { "name": "X_train", "values": "1, 2, 3, 4, 5" },
+      "outputs": [ { "name": "Vector", "type": "array", "links": [1] } ]
+    },
+    {
+      "id": 2, "type": "data/vector", "pos": [50, 200], "size": [210, 82], "flags": {}, "order": 1, "mode": 0,
+      "properties": { "name": "y_train", "values": "2.1, 3.9, 6.1, 8.0, 10.2" },
+      "outputs": [ { "name": "Vector", "type": "array", "links": [2] } ]
+    },
+    {
+      "id": 3, "type": "model/linear_regression_fit", "pos": [350, 100], "size": [210, 82], "flags": {}, "order": 2, "mode": 0,
+      "properties": { "name": "lr_model", "fit_intercept": true },
+      "inputs": [ { "name": "X", "type": "array", "link": 1 }, { "name": "y", "type": "array", "link": 2 } ],
+      "outputs": [ { "name": "Model", "type": "model", "links": [3] } ]
+    },
+    {
+      "id": 4, "type": "data/vector", "pos": [350, 300], "size": [210, 82], "flags": {}, "order": 3, "mode": 0,
+      "properties": { "name": "X_test", "values": "6, 7, 8" },
+      "outputs": [ { "name": "Vector", "type": "array", "links": [4] } ]
+    },
+    {
+      "id": 5, "type": "model/predict", "pos": [650, 150], "size": [210, 58], "flags": {}, "order": 4, "mode": 0,
+      "properties": { "name": "y_pred" },
+      "inputs": [ { "name": "Model", "type": "model", "link": 3 }, { "name": "X", "type": "array", "link": 4 } ],
+      "outputs": [ { "name": "y_pred", "type": "array", "links": [5] } ]
+    },
+    {
+      "id": 6, "type": "io/output", "pos": [950, 150], "size": [210, 58], "flags": {}, "order": 5, "mode": 0,
+      "properties": { "name": "predictions" },
+      "inputs": [ { "name": "In", "type": "", "link": 5 } ]
+    }
+  ],
+  "links": [
+    [1, 1, 0, 3, 0, "array"],
+    [2, 2, 0, 3, 1, "array"],
+    [3, 3, 0, 5, 0, "model"],
+    [4, 4, 0, 5, 1, "array"],
+    [5, 5, 0, 6, 0, "array"]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {},
+  "version": 0.4
+}

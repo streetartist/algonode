@@ -1,0 +1,7 @@
+flask
+numpy
+scipy
+scikit-learn
+networkx
+statsmodels
+pandas

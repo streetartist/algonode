@@ -1,0 +1,42 @@
+{
+  "last_node_id": 5,
+  "last_link_id": 4,
+  "nodes": [
+    {
+      "id": 1, "type": "data/vector", "pos": [50, 50], "size": [210, 82], "flags": {}, "order": 0, "mode": 0,
+      "properties": { "name": "c", "values": "-5, -4, -3" },
+      "outputs": [ { "name": "Vector", "type": "array", "links": [1] } ]
+    },
+    {
+      "id": 2, "type": "data/matrix", "pos": [50, 180], "size": [280, 82], "flags": {}, "order": 1, "mode": 0,
+      "properties": { "name": "A_ub", "rows": "2, 3, 1; 4, 2, 3; 3, 1, 2; 1, 1, 1" },
+      "outputs": [ { "name": "Matrix", "type": "matrix", "links": [2] } ]
+    },
+    {
+      "id": 3, "type": "data/vector", "pos": [50, 320], "size": [210, 82], "flags": {}, "order": 2, "mode": 0,
+      "properties": { "name": "b_ub", "values": "10, 15, 8, 5" },
+      "outputs": [ { "name": "Vector", "type": "array", "links": [3] } ]
+    },
+    {
+      "id": 4, "type": "algo/integer_programming", "pos": [400, 180], "size": [210, 78], "flags": {}, "order": 3, "mode": 0,
+      "properties": {},
+      "inputs": [ { "name": "c", "type": "array", "link": 1 }, { "name": "A_ub", "type": "matrix", "link": 2 }, { "name": "b_ub", "type": "array", "link": 3 } ],
+      "outputs": [ { "name": "Solution", "type": "array", "links": [4] } ]
+    },
+    {
+      "id": 5, "type": "io/output", "pos": [700, 180], "size": [210, 58], "flags": {}, "order": 4, "mode": 0,
+      "properties": { "name": "optimal_x" },
+      "inputs": [ { "name": "In", "type": "", "link": 4 } ]
+    }
+  ],
+  "links": [
+    [1, 1, 0, 4, 0, "array"],
+    [2, 2, 0, 4, 1, "matrix"],
+    [3, 3, 0, 4, 2, "array"],
+    [4, 4, 0, 5, 0, "array"]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {},
+  "version": 0.4
+}

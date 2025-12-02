@@ -1,0 +1,78 @@
+{
+  "nodes": [
+    {
+      "lib_id": 1,
+      "name": "CalculateMetrics",
+      "description": "",
+      "category": "我的节点",
+      "node_type": "custom/python_script",
+      "node_data": {
+        "id": 7,
+        "type": "custom/python_script",
+        "pos": [
+          600,
+          150
+        ],
+        "size": {
+          "0": 300,
+          "1": 200
+        },
+        "flags": {},
+        "order": 6,
+        "mode": 0,
+        "inputs": [
+          {
+            "name": "coeffs",
+            "type": "",
+            "link": 15
+          },
+          {
+            "name": "center",
+            "type": "",
+            "link": 12
+          },
+          {
+            "name": "age",
+            "type": "",
+            "link": 13
+          },
+          {
+            "name": "traffic",
+            "type": "",
+            "link": 14
+          }
+        ],
+        "outputs": [
+          {
+            "name": "peak",
+            "type": "",
+            "links": [
+              16
+            ]
+          },
+          {
+            "name": "offset",
+            "type": "",
+            "links": [
+              17
+            ]
+          },
+          {
+            "name": "total",
+            "type": "",
+            "links": [
+              18
+            ]
+          }
+        ],
+        "title": "CalculateMetrics",
+        "properties": {
+          "code": "# Calculate Metrics\ntry:\n    # coeffs is [a, b, c] for ax^2 + bx + c\n    a = coeffs[0]\n    b = coeffs[1]\n    \n    # Peak location x = -b / 2a\n    if abs(a) > 1e-10:\n        peak = -b / (2 * a)\n    else:\n        peak = 0\n        \n    offset = peak - center\n    total = age * traffic * 365\nexcept Exception:\n    peak = 0\n    offset = 0\n    total = 0",
+          "inputs": "coeffs, center, age, traffic",
+          "outputs": "peak, offset, total"
+        }
+      },
+      "created_at": "2025-12-02T14:44:00.963578"
+    }
+  ]
+}

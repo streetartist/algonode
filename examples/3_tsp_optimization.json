@@ -1,0 +1,30 @@
+{
+  "last_node_id": 3,
+  "last_link_id": 2,
+  "nodes": [
+    {
+      "id": 1, "type": "data/matrix", "pos": [100, 100], "size": [210, 82], "flags": {}, "order": 0, "mode": 0,
+      "properties": { "name": "DistMatrix", "rows": "0, 10, 15, 20; 10, 0, 35, 25; 15, 35, 0, 30; 20, 25, 30, 0" },
+      "outputs": [ { "name": "Matrix", "type": "matrix", "links": [1] } ]
+    },
+    {
+      "id": 2, "type": "opt/tsp", "pos": [400, 100], "size": [210, 58], "flags": {}, "order": 1, "mode": 0,
+      "properties": {},
+      "inputs": [ { "name": "DistMatrix", "type": "matrix", "link": 1 } ],
+      "outputs": [ { "name": "Path", "type": "array", "links": [2] } ]
+    },
+    {
+      "id": 3, "type": "io/output", "pos": [700, 100], "size": [210, 58], "flags": {}, "order": 2, "mode": 0,
+      "properties": { "name": "tsp_path" },
+      "inputs": [ { "name": "In", "type": "", "link": 2 } ]
+    }
+  ],
+  "links": [
+    [1, 1, 0, 2, 0, "matrix"],
+    [2, 2, 0, 3, 0, "array"]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {},
+  "version": 0.4
+}

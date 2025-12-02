@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="zh-cn">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AlgoNode - 可视化数学建模</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/litegraph.js/css/litegraph.css" />
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <!-- CodeMirror CSS -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/monokai.min.css">
+  <style>
+    .CodeMirror {
+      height: 100%;
+      font-size: 14px;
+    }
+    #codeModal .CodeMirror {
+      height: 400px;
+    }
+    .tab-btn.active {
+        color: #4CAF50 !important;
+        border-bottom: 2px solid #4CAF50 !important;
+    }
+    .market-item {
+        background: #222;
+        border: 1px solid #444;
+        border-radius: 6px;
+        padding: 15px;
+        display: flex;
+        flex-direction: column;
+    }
+    .market-item h4 { margin: 0 0 5px 0; color: #4CAF50; }
+    .market-item .meta { font-size: 12px; color: #888; margin-bottom: 10px; }
+    .market-item .desc { font-size: 13px; color: #ccc; flex: 1; margin-bottom: 15px; }
+    .market-item button { width: 100%; padding: 5px; cursor: pointer; background: #333; color: #eee; border: 1px solid #555; }
+    .market-item button:hover { background: #444; }
+    .market-item .type-badge {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 10px;
+        font-size: 11px;
+        margin-right: 5px;
+    }
+    .type-badge.project { background: #2196F3; color: white; }
+    .type-badge.subgraph { background: #4CAF50; color: white; }
+    .type-badge.node { background: #FF9800; color: white; }
+    .filter-btn {
+        background: #333;
+        border: 1px solid #555;
+        color: #aaa;
+        padding: 5px 12px;
+        border-radius: 15px;
+        cursor: pointer;
+        font-size: 13px;
+    }
+    .filter-btn:hover { background: #444; }
+    .filter-btn.active { background: #4CAF50; color: white; border-color: #4CAF50; }
+    .source-badge {
+        display: inline-block;
+        padding: 2px 6px;
+        border-radius: 8px;
+        font-size: 10px;
+        margin-left: 5px;
+    }
+    .source-badge.local { background: #666; color: #ddd; }
+    .source-badge.remote { background: #2196F3; color: white; }
+    #centralServerInfo {
+        padding: 8px 12px;
+        background: #1a3a1a;
+        border: 1px solid #4CAF50;
+        border-radius: 4px;
+        margin-bottom: 10px;
+        font-size: 12px;
+        color: #8f8;
+    }
+    #centralServerInfo.disconnected {
+        background: #3a1a1a;
+        border-color: #f44336;
+        color: #f88;
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="sidebar">
+      <div class="sidebar-header">
+        <h2>节点库</h2>
+        <input type="text" id="nodeSearch" class="search-box" placeholder="搜索节点..." />
+      </div>
+      <div id="nodeList" class="node-list">
+        <!-- Categories and nodes will be rendered here by JS -->
+      </div>
+      <div class="actions">
+        <button id="btnRun" class="primary-btn">运行模型</button>
+        <button id="btnExport">导出 Python 代码</button>
+        <button id="btnSaveLocal">保存到本地</button>
+        <button id="btnLoadLocal">打开本地文件</button>
+        <input type="file" id="fileInput" style="display: none;" accept=".json" />
+        <button id="btnSample">载入示例</button>
+        <button id="btnMarket" style="margin-top: 10px; background: #FF9800;">节点市场</button>
+        <button id="btnPublish" style="margin-top: 5px; background: #9C27B0;">发布作品</button>
+        <button id="btnAbout" style="margin-top: 10px; background: #2a3a5a;">关于 AlgoNode</button>
+      </div>
+    </div>
+    <div class="canvas-wrap">
+      <canvas id="graphcanvas" width="1200" height="800"></canvas>
+      <div id="status-bar">Ready</div>
+    </div>
+  </div>
+
+  <!-- Run Result Modal -->
+  <div id="resultModal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>运行结果</h3>
+        <span class="close">&times;</span>
+      </div>
+      <pre id="runOutput"></pre>
+    </div>
+  </div>
+
+  <div id="codeModal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>导出的 Python 代码</h3>
+        <button id="closeModal">关闭</button>
+      </div>
+      <textarea id="codeOutput" readonly></textarea>
+      <div class="modal-actions">
+        <button id="downloadPy">下载为 .py</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- About Modal -->
+  <div id="aboutModal" class="modal hidden">
+    <div class="modal-content" style="width: 500px; height: auto; text-align: center;">
+      <div class="modal-header">
+        <h3>关于 AlgoNode</h3>
+        <span class="close" id="closeAbout">&times;</span>
+      </div>
+      <div style="padding: 20px;">
+        <div style="font-size: 48px; margin-bottom: 15px;">🧮</div>
+        <h2 style="margin: 0 0 10px 0; color: #4CAF50;">AlgoNode</h2>
+        <p style="color: #aaa; margin-bottom: 20px;">可视化数学建模平台</p>
+        <div style="text-align: left; background: #2a2a2a; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+          <p style="margin: 8px 0;"><strong>版本：</strong>v0.4.1</p>
+          <p style="margin: 8px 0;"><strong>作者：</strong>电子科技大学 闻家贤</p>
+          <p style="margin: 8px 0;"><strong>开源仓库：</strong><a href="https://github.com/streetartist/algonode" target="_blank" style="color: #4CAF50;">github.com/streetartist/algonode</a></p>
+        </div>
+        <div style="font-style: italic; color: #888; border-left: 3px solid #4CAF50; padding-left: 15px; text-align: left;">
+          "The purpose of abstraction is not to be vague, but to create a new semantic level in which one can be absolutely precise."<br>
+          <span style="color: #666;">— Edsger W. Dijkstra</span>
+        </div>
+        <p style="margin-top: 20px; font-size: 0.85rem; color: #666;">将复杂的算法抽象为可连接的节点，让建模变得简单而精确。</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Market Browse Modal -->
+  <div id="marketModal" class="modal hidden">
+    <div class="modal-content" style="width: 800px; height: 600px; display: flex; flex-direction: column;">
+      <div class="modal-header">
+        <h3>节点市场</h3>
+        <span class="close" id="closeMarket">&times;</span>
+      </div>
+      <div id="centralServerInfo" class="hidden"></div>
+      <div class="market-filter" style="display: flex; gap: 10px; margin-bottom: 15px;">
+        <button class="filter-btn active" data-filter="all">全部</button>
+        <button class="filter-btn" data-filter="project">完整项目</button>
+        <button class="filter-btn" data-filter="subgraph">子图</button>
+        <button class="filter-btn" data-filter="node">自定义节点</button>
+      </div>
+      <div id="marketBrowse" style="flex: 1; overflow-y: auto;">
+        <div id="marketList" class="market-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 15px;">
+            <div style="text-align: center; padding: 20px; color: #888;">加载中...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Market Upload Modal -->
+  <div id="uploadModal" class="modal hidden">
+    <div class="modal-content" style="width: 500px; height: auto;">
+      <div class="modal-header">
+        <h3>发布到市场</h3>
+        <span class="close" id="closeUpload">&times;</span>
+      </div>
+      <div style="padding: 10px 0;">
+        <div class="form-group" style="margin-bottom: 15px;">
+            <label style="display: block; margin-bottom: 5px;">名称</label>
+            <input type="text" id="uploadName" class="full-width" placeholder="给你的作品起个名字" style="width: 100%; padding: 8px; background: #222; border: 1px solid #444; color: #eee;">
+        </div>
+        <div class="form-group" style="margin-bottom: 15px;">
+            <label style="display: block; margin-bottom: 5px;">类型</label>
+            <select id="uploadType" class="full-width" style="width: 100%; padding: 8px; background: #222; border: 1px solid #444; color: #eee;">
+                <option value="project">完整程序 (当前画布)</option>
+                <option value="subgraph">子图 (当前选中的子图节点)</option>
+                <option value="node">自定义节点 (当前选中的节点)</option>
+            </select>
+            <p id="uploadTypeHint" class="hint" style="font-size: 12px; color: #aaa; margin-top: 5px;">
+                上传当前画布的所有内容作为完整项目。
+            </p>
+        </div>
+        <div class="form-group" style="margin-bottom: 15px;" id="uploadTargetGroup">
+            <label style="display: block; margin-bottom: 5px;">发布目标</label>
+            <select id="uploadTarget" class="full-width" style="width: 100%; padding: 8px; background: #222; border: 1px solid #444; color: #eee;">
+                <option value="local">本地市场</option>
+                <option value="remote">中央服务器</option>
+            </select>
+            <p class="hint" style="font-size: 12px; color: #aaa; margin-top: 5px;">
+                本地市场仅本机可见，中央服务器对所有用户可见。
+            </p>
+        </div>
+        <div class="form-group" style="margin-bottom: 15px;">
+            <label style="display: block; margin-bottom: 5px;">作者</label>
+            <input type="text" id="uploadAuthor" class="full-width" placeholder="你的名字" style="width: 100%; padding: 8px; background: #222; border: 1px solid #444; color: #eee;">
+        </div>
+        <div class="form-group" style="margin-bottom: 15px;">
+            <label style="display: block; margin-bottom: 5px;">描述</label>
+            <textarea id="uploadDesc" class="full-width" rows="4" placeholder="介绍一下这个作品的功能..." style="width: 100%; padding: 8px; background: #222; border: 1px solid #444; color: #eee;"></textarea>
+        </div>
+        <button id="btnDoUpload" class="primary-btn" style="margin-top: 10px; width: 100%; padding: 10px;">确认发布</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Python Code Editor Modal -->
+  <div id="pythonEditModal" class="modal hidden">
+    <div class="modal-content" style="width: 90%; max-width: 1000px; height: 80%;">
+      <div class="modal-header">
+        <h3>编辑 Python 代码</h3>
+        <span class="close" id="closePythonEdit">&times;</span>
+      </div>
+      <div style="display: flex; flex-direction: column; height: 100%;">
+        <textarea id="pythonCodeEditor" style="flex: 1; background: #1e1e1e; color: #d4d4d4; font-family: Consolas, monospace; padding: 10px; border: 1px solid #444; resize: none;"></textarea>
+        <div class="modal-actions" style="margin-top: 10px; text-align: right;">
+          <button id="btnSavePythonCode" class="primary-btn">保存代码</button>
+          <button id="btnCancelPythonCode">取消</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/litegraph.js/build/litegraph.min.js"></script>
+  <!-- CodeMirror JS -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/python/python.min.js"></script>
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

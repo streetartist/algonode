@@ -1,0 +1,17 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "append_css",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-c",
+				"Add-Content -Path 'd:\\algonode\\static\\css\\style.css' -Value '\n/* Modal styles */\n.modal {\n  display: none; \n  position: fixed; \n  z-index: 1000; \n  left: 0;\n  top: 0;\n  width: 100%; \n  height: 100%; \n  overflow: auto; \n  background-color: rgba(0,0,0,0.6); \n}\n\n.modal-content {\n  background-color: #333;\n  margin: 10% auto; \n  padding: 20px;\n  border: 1px solid #555;\n  width: 80%; \n  max-width: 800px;\n  color: #eee;\n  border-radius: 8px;\n  box-shadow: 0 4px 8px rgba(0,0,0,0.3);\n}\n\n.close {\n  color: #aaa;\n  float: right;\n  font-size: 28px;\n  font-weight: bold;\n}\n\n.close:hover,\n.close:focus {\n  color: #fff;\n  text-decoration: none;\n  cursor: pointer;\n}\n\n#runOutput {\n  background: #111;\n  padding: 15px;\n  border-radius: 4px;\n  white-space: pre-wrap;\n  font-family: Consolas, monospace;\n  max-height: 400px;\n  overflow-y: auto;\n  border: 1px solid #444;\n}\n\n.primary-btn {\n  background-color: #4CAF50;\n  color: white;\n  border: none;\n}\n.primary-btn:hover {\n  background-color: #45a049;\n}\n'"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		}
+	]
+}

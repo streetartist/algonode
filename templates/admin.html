@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="zh-cn">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AlgoNode 管理后台</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #1e1e1e;
+      color: #eee;
+      margin: 0;
+      padding: 20px;
+    }
+    .container {
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+    h1, h2 { color: #4CAF50; }
+    
+    /* Login Form */
+    .login-box {
+      background: #252526;
+      padding: 30px;
+      border-radius: 8px;
+      width: 300px;
+      margin: 100px auto;
+      text-align: center;
+      border: 1px solid #333;
+    }
+    input[type="password"] {
+      width: 100%;
+      padding: 10px;
+      margin: 10px 0;
+      background: #333;
+      border: 1px solid #555;
+      color: white;
+      border-radius: 4px;
+      box-sizing: border-box;
+    }
+    button {
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    button:hover { background-color: #45a049; }
+    button.danger { background-color: #f44336; }
+    button.danger:hover { background-color: #d32f2f; }
+    
+    /* Dashboard */
+    .dashboard { display: none; }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      border-bottom: 1px solid #333;
+      padding-bottom: 10px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #252526;
+    }
+    th, td {
+      padding: 12px;
+      text-align: left;
+      border-bottom: 1px solid #333;
+    }
+    th { background-color: #333; }
+    tr:hover { background-color: #2a2a2a; }
+    
+    .badge {
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    .badge.project { background: #2196F3; }
+    .badge.subgraph { background: #4CAF50; }
+    .badge.node { background: #FF9800; }
+    
+    .hidden { display: none; }
+    .error { color: #f44336; margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    
+    <!-- Login Section -->
+    <div id="loginSection" class="login-box">
+      <h2>管理员登录</h2>
+      <input type="password" id="password" placeholder="请输入管理员密码" />
+      <button onclick="login()">登录</button>
+      <div id="loginError" class="error"></div>
+    </div>
+
+    <!-- Dashboard Section -->
+    <div id="dashboardSection" class="dashboard">
+      <div class="header">
+        <h1>AlgoNode 市场管理</h1>
+        <div>
+          <span id="serverStatus" style="margin-right: 15px; color: #888;"></span>
+          <button onclick="logout()" style="background: #555;">退出</button>
+        </div>
+      </div>
+      
+      <div style="margin-bottom: 15px;">
+        <button onclick="loadItems()">刷新列表</button>
+      </div>
+      
+      <table id="itemsTable">
+        <thead>
+          <tr>
+            <th>名称</th>
+            <th>类型</th>
+            <th>作者</th>
+            <th>发布时间</th>
+            <th>文件名</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="itemsBody">
+          <!-- Items will be loaded here -->
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    // Check session on load
+    checkSession();
+
+    function checkSession() {
+        fetch('/api/admin/check_session')
+            .then(res => res.json())
+            .then(data => {
+                if (data.ok && data.logged_in) {
+                    showDashboard();
+                } else {
+                    showLogin();
+                }
+            });
+    }
+
+    function showLogin() {
+        document.getElementById('loginSection').style.display = 'block';
+        document.getElementById('dashboardSection').style.display = 'none';
+    }
+
+    function showDashboard() {
+        document.getElementById('loginSection').style.display = 'none';
+        document.getElementById('dashboardSection').style.display = 'block';
+        loadItems();
+    }
+
+    function login() {
+        const pwd = document.getElementById('password').value;
+        fetch('/api/admin/login', {
+            method: 'POST',
+            body: JSON.stringify({ password: pwd })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.ok) {
+                showDashboard();
+                document.getElementById('password').value = '';
+                document.getElementById('loginError').innerText = '';
+            } else {
+                document.getElementById('loginError').innerText = data.error || '登录失败';
+            }
+        });
+    }
+
+    function logout() {
+        fetch('/api/admin/logout', { method: 'POST' })
+            .then(() => showLogin());
+    }
+
+    function loadItems() {
+        fetch('/api/market/list')
+            .then(res => res.json())
+            .then(data => {
+                if (data.ok) {
+                    renderItems(data.items);
+                }
+            });
+    }
+
+    function renderItems(items) {
+        const tbody = document.getElementById('itemsBody');
+        tbody.innerHTML = '';
+        
+        if (items.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#888;">暂无数据</td></tr>';
+            return;
+        }
+
+        items.forEach(item => {
+            const tr = document.createElement('tr');
+            const date = new Date(item.timestamp * 1000).toLocaleString();
+            const typeClass = item.type || 'project';
+            const typeLabel = {
+                'project': '完整项目',
+                'subgraph': '子图',
+                'node': '自定义节点'
+            }[item.type] || item.type;
+
+            tr.innerHTML = `
+                <td><strong>${item.name}</strong></td>
+                <td><span class="badge ${typeClass}">${typeLabel}</span></td>
+                <td>${item.author}</td>
+                <td>${date}</td>
+                <td style="font-family: monospace; color: #aaa;">${item.filename}</td>
+                <td>
+                    <button class="danger" onclick="deleteItem('${item.filename}')">删除</button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    function deleteItem(filename) {
+        if (!confirm('确定要删除这个项目吗？此操作不可恢复。')) return;
+        
+        fetch('/api/admin/market/delete', {
+            method: 'POST',
+            body: JSON.stringify({ filename: filename })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.ok) {
+                alert('删除成功');
+                loadItems();
+            } else {
+                alert('删除失败: ' + data.error);
+            }
+        });
+    }
+  </script>
+</body>
+</html>
