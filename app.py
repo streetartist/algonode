@@ -902,8 +902,14 @@ def generate_scope(graph_data: Dict[str, Any], initial_varmap: Dict[int, Any] = 
         name = default_var_name(node)
         fit_intercept = bool(node.get("properties", {}).get("fit_intercept", True))
         add(f"# Linear Regression (least squares)")
-        add(f"_X = {X if X else 'np.zeros((0,0))'}")
-        add(f"_y = {y if y else 'np.zeros((0,))'}")
+        if X:
+            add(f"_X = np.array({X}, dtype=float)")
+        else:
+            add(f"_X = np.zeros((0,0))")
+        if y:
+            add(f"_y = np.array({y}, dtype=float)")
+        else:
+            add(f"_y = np.zeros((0,))")
         if fit_intercept:
             add(f"_X_lr = np.column_stack([np.ones((_X.shape[0],)), _X]) if _X.size else _X")
         else:
@@ -919,7 +925,10 @@ def generate_scope(graph_data: Dict[str, Any], initial_varmap: Dict[int, Any] = 
         add(f"# Predict using linear regression model")
         add(f"_model = {model if model else '{}'}")
         add(f"_theta = _model.get('theta', np.array([]))")
-        add(f"_X = {X if X else 'np.zeros((0,0))'}")
+        if X:
+            add(f"_X = np.array({X}, dtype=float)")
+        else:
+            add(f"_X = np.zeros((0,0))")
         add(f"_Xp = np.column_stack([np.ones((_X.shape[0],)), _X]) if _model.get('fit_intercept', False) and _X.size else _X")
         add(f"{name} = _Xp @ _theta if _Xp.size and _theta.size else np.array([])")
         return name
@@ -996,7 +1005,7 @@ def generate_scope(graph_data: Dict[str, Any], initial_varmap: Dict[int, Any] = 
         add(f"try:")
         add(f"    {name}_X_train, {name}_X_test, {name}_y_train, {name}_y_test = train_test_split({X}, {y}, test_size={test_size}, random_state={random_state})")
         add(f"except Exception:")
-        add(f"    {name}_X_train, {name}_X_test, {name}_y_train, {name}_y_test = [], [], [], []")
+        add(f"    {name}_X_train, {name}_X_test, {name}_y_train, {name}_y_test = np.array([]), np.array([]), np.array([]), np.array([])")
         return {0: f"{name}_X_train", 1: f"{name}_X_test", 2: f"{name}_y_train", 3: f"{name}_y_test"}
 
     def gen_plot_line(node, inputs):
@@ -1169,35 +1178,439 @@ def generate_scope(graph_data: Dict[str, Any], initial_varmap: Dict[int, Any] = 
 
     def gen_load_csv(node, inputs):
         name = default_var_name(node)
-        path = node.get("properties", {}).get("path", "data.csv")
-        header = node.get("properties", {}).get("header", 0)
+        props = node.get("properties", {}) or {}
+        path = props.get("path", "data.csv")
+        header = props.get("header", 0)
+        encoding = props.get("encoding", "utf-8")
+        usecols_raw = str(props.get("usecols", "") or "")
+        output_format = str(props.get("output_format", "matrix")).lower()
+        if output_format not in {"matrix", "dataframe", "records"}:
+            output_format = "matrix"
+        usecols = [c.strip() for c in usecols_raw.split(",") if c.strip()]
+        path_literal = json.dumps(path)
+        encoding_literal = json.dumps(encoding)
+        usecols_literal = f"[{', '.join(repr(c) for c in usecols)}]" if usecols else "None"
         add(f"# Load CSV")
         add(f"try:")
-        add(f"    {name} = pd.read_csv(r'{path}', header={header}).values")
+        add(f"    _df_{name} = pd.read_csv({path_literal}, header={header}, encoding={encoding_literal}" + (", usecols=" + usecols_literal if usecols else "") + ")")
+        if output_format == "dataframe":
+            add(f"    {name} = _df_{name}")
+        elif output_format == "records":
+            add(f"    {name} = _df_{name}.to_dict(orient='records')")
+        else:
+            add(f"    {name} = _df_{name}.values")
         add(f"except Exception:")
-        add(f"    {name} = np.array([])")
+        if output_format == "dataframe":
+            add(f"    {name} = pd.DataFrame()")
+        elif output_format == "records":
+            add(f"    {name} = []")
+        else:
+            add(f"    {name} = np.array([])")
         return name
 
     def gen_load_excel(node, inputs):
         name = default_var_name(node)
-        path = node.get("properties", {}).get("path", "data.xlsx")
-        sheet = node.get("properties", {}).get("sheet", 0)
+        props = node.get("properties", {}) or {}
+        path = props.get("path", "data.xlsx")
+        sheet = props.get("sheet", 0)
+        usecols_raw = str(props.get("usecols", "") or "")
+        output_format = str(props.get("output_format", "matrix")).lower()
+        if output_format not in {"matrix", "dataframe", "records"}:
+            output_format = "matrix"
+        usecols = [c.strip() for c in usecols_raw.split(",") if c.strip()]
+        path_literal = json.dumps(path)
+        sheet_literal = json.dumps(sheet) if isinstance(sheet, str) else sheet
+        usecols_literal = f"[{', '.join(repr(c) for c in usecols)}]" if usecols else "None"
         add(f"# Load Excel")
         add(f"try:")
-        add(f"    {name} = pd.read_excel(r'{path}', sheet_name={sheet}).values")
+        add(f"    _df_{name} = pd.read_excel({path_literal}, sheet_name={sheet_literal}" + (", usecols=" + usecols_literal if usecols else "") + ")")
+        if output_format == "dataframe":
+            add(f"    {name} = _df_{name}")
+        elif output_format == "records":
+            add(f"    {name} = _df_{name}.to_dict(orient='records')")
+        else:
+            add(f"    {name} = _df_{name}.values")
         add(f"except Exception:")
-        add(f"    {name} = np.array([])")
+        if output_format == "dataframe":
+            add(f"    {name} = pd.DataFrame()")
+        elif output_format == "records":
+            add(f"    {name} = []")
+        else:
+            add(f"    {name} = np.array([])")
         return name
 
     def gen_select_column(node, inputs):
         data = inputs[0][1] if len(inputs) > 0 else "np.array([])"
         name = default_var_name(node)
-        col_idx = node.get("properties", {}).get("index", 0)
-        add(f"# Select Column {col_idx}")
+        props = node.get("properties", {}) or {}
+        selector = str(props.get("selector", "0"))
+        mode = str(props.get("mode", "index")).lower()
+        as_array = bool(props.get("as_array", True))
+        try:
+            col_idx = int(float(selector))
+        except Exception:
+            col_idx = 0
+        selector_literal = json.dumps(selector)
+        add(f"# Select Column/Series")
+        add(f"_source_{name} = {data}")
+        add(f"_df_{name} = _source_{name} if isinstance(_source_{name}, pd.DataFrame) else pd.DataFrame(_source_{name})")
         add(f"try:")
-        add(f"    {name} = {data}[:, {col_idx}]")
+        if mode == "name":
+            add(f"    if {selector_literal} in _df_{name}.columns:")
+            add(f"        _sel_{name} = _df_{name}[{selector_literal}]")
+            add(f"    else:")
+            add(f"        _sel_{name} = _df_{name}.iloc[:, {col_idx}]")
+        else:
+            add(f"    _sel_{name} = _df_{name}.iloc[:, {col_idx}]")
+        if as_array:
+            add(f"    {name} = _sel_{name}.values")
+        else:
+            add(f"    {name} = _sel_{name}")
         add(f"except Exception:")
-        add(f"    {name} = np.array([])")
+        if as_array:
+            add(f"    {name} = np.array([])")
+        else:
+            add(f"    {name} = pd.Series(dtype=float)")
+        return name
+
+    def gen_filter_rows(node, inputs):
+        data = inputs[0][1] if len(inputs) > 0 else "pd.DataFrame()"
+        name = default_var_name(node)
+        props = node.get("properties", {}) or {}
+        condition = str(props.get("condition", "")).strip()
+        reset_index = bool(props.get("reset_index", True))
+        output_format = str(props.get("output_format", "dataframe")).lower()
+        if output_format not in {"matrix", "dataframe"}:
+            output_format = "dataframe"
+        condition_literal = json.dumps(condition)
+        add(f"# Filter Rows")
+        add(f"_source_{name} = {data}")
+        add(f"_df_{name} = _source_{name} if isinstance(_source_{name}, pd.DataFrame) else pd.DataFrame(_source_{name})")
+        add(f"try:")
+        if condition:
+            add(f"    _filtered_{name} = _df_{name}.query({condition_literal})")
+        else:
+            add(f"    _filtered_{name} = _df_{name}.copy()")
+        if reset_index:
+            add(f"    _filtered_{name} = _filtered_{name}.reset_index(drop=True)")
+        add(f"except Exception:")
+        add(f"    _filtered_{name} = _df_{name}.copy()")
+        if output_format == "matrix":
+            add(f"{name} = _filtered_{name}.values")
+        else:
+            add(f"{name} = _filtered_{name}")
+        return name
+
+    def gen_group_aggregate(node, inputs):
+        data = inputs[0][1] if len(inputs) > 0 else "pd.DataFrame()"
+        name = default_var_name(node)
+        props = node.get("properties", {}) or {}
+        group_raw = str(props.get("group_by", ""))
+        agg_raw = str(props.get("aggregations", ""))
+        reset_index = bool(props.get("reset_index", True))
+        flatten_cols = bool(props.get("flatten_columns", True))
+        dropna = bool(props.get("dropna", True))
+        output_format = str(props.get("output_format", "dataframe")).lower()
+        if output_format not in {"matrix", "dataframe"}:
+            output_format = "dataframe"
+        group_cols = [c.strip() for c in group_raw.split(",") if c.strip()]
+        agg_spec = {}
+        for part in agg_raw.split(","):
+            if ":" not in part:
+                continue
+            col, func = part.split(":", 1)
+            funcs = [f.strip() for f in func.split("|") if f.strip()]
+            if not funcs:
+                funcs = ["sum"]
+            agg_spec[col.strip()] = funcs if len(funcs) > 1 else funcs[0]
+        group_literal = f"[{', '.join(repr(c) for c in group_cols)}]"
+        agg_literal = "{" + ", ".join(f"{repr(col)}: {repr(funcs)}" for col, funcs in agg_spec.items()) + "}"
+        add(f"# Group & Aggregate")
+        add(f"_source_{name} = {data}")
+        add(f"_df_{name} = _source_{name} if isinstance(_source_{name}, pd.DataFrame) else pd.DataFrame(_source_{name})")
+        add(f"_group_cols_{name} = {group_literal}")
+        add(f"_agg_map_{name} = {agg_literal}")
+        add(f"if _group_cols_{name} and _agg_map_{name}:")
+        add(f"    _agg_{name} = _df_{name}.groupby(_group_cols_{name}, dropna={dropna}).agg(_agg_map_{name})")
+        if reset_index:
+            add(f"    _agg_{name} = _agg_{name}.reset_index()")
+        if flatten_cols:
+            add(f"    if isinstance(_agg_{name}.columns, pd.MultiIndex):")
+            add(f"        _agg_{name}.columns = ['_'.join([str(x) for x in tpl if str(x)]) for tpl in _agg_{name}.columns.values]")
+        add(f"else:")
+        add(f"    _agg_{name} = _df_{name}.copy()")
+        if output_format == "matrix":
+            add(f"{name} = _agg_{name}.values")
+        else:
+            add(f"{name} = _agg_{name}")
+        return name
+
+    def gen_rolling_window(node, inputs):
+        """Calculate rolling window statistics"""
+        data = inputs[0][1] if len(inputs) > 0 else "pd.DataFrame()"
+        name = default_var_name(node)
+        props = node.get("properties", {}) or {}
+        column = str(props.get("column", ""))
+        window = int(props.get("window", 3))
+        operation = str(props.get("operation", "mean")).lower()
+        groupby_cols = str(props.get("groupby", ""))
+        output_col = str(props.get("output_column", "")) or f"{column}_{operation}_{window}"
+        min_periods = int(props.get("min_periods", 1))
+        
+        add(f"# Rolling Window: {operation} over {window} periods")
+        add(f"_df_{name} = {data} if isinstance({data}, pd.DataFrame) else pd.DataFrame({data})")
+        add(f"_result_{name} = _df_{name}.copy()")
+        
+        col_literal = json.dumps(column)
+        out_literal = json.dumps(output_col)
+        
+        if groupby_cols:
+            groupby_list = [c.strip() for c in groupby_cols.split(",") if c.strip()]
+            groupby_literal = json.dumps(groupby_list)
+            add(f"_rolling_{name} = _result_{name}.groupby({groupby_literal})[{col_literal}].rolling({window}, min_periods={min_periods})")
+        else:
+            add(f"_rolling_{name} = _result_{name}[{col_literal}].rolling({window}, min_periods={min_periods})")
+        
+        if operation == "mean":
+            add(f"_rolled_{name} = _rolling_{name}.mean()")
+        elif operation == "sum":
+            add(f"_rolled_{name} = _rolling_{name}.sum()")
+        elif operation == "std":
+            add(f"_rolled_{name} = _rolling_{name}.std()")
+        elif operation == "min":
+            add(f"_rolled_{name} = _rolling_{name}.min()")
+        elif operation == "max":
+            add(f"_rolled_{name} = _rolling_{name}.max()")
+        elif operation == "median":
+            add(f"_rolled_{name} = _rolling_{name}.median()")
+        else:
+            add(f"_rolled_{name} = _rolling_{name}.mean()")
+        
+        if groupby_cols:
+            add(f"_result_{name}[{out_literal}] = _rolled_{name}.reset_index(level=0, drop=True)")
+        else:
+            add(f"_result_{name}[{out_literal}] = _rolled_{name}")
+        
+        add(f"{name} = _result_{name}")
+        return name
+
+    def gen_transform_column(node, inputs):
+        """Transform a column with various operations"""
+        data = inputs[0][1] if len(inputs) > 0 else "pd.DataFrame()"
+        name = default_var_name(node)
+        props = node.get("properties", {}) or {}
+        column = str(props.get("column", ""))
+        operation = str(props.get("operation", "identity")).lower()
+        output_col = str(props.get("output_column", "")) or f"{column}_{operation}"
+        groupby_cols = str(props.get("groupby", ""))
+        
+        add(f"# Transform Column: {operation}")
+        add(f"_df_{name} = {data} if isinstance({data}, pd.DataFrame) else pd.DataFrame({data})")
+        add(f"_result_{name} = _df_{name}.copy()")
+        
+        col_literal = json.dumps(column)
+        out_literal = json.dumps(output_col)
+        
+        # Helper to apply operation with optional groupby
+        def apply_op(op_code):
+            if groupby_cols:
+                groupby_list = [c.strip() for c in groupby_cols.split(",") if c.strip()]
+                groupby_literal = json.dumps(groupby_list)
+                return f"_result_{name}.groupby({groupby_literal})[{col_literal}].{op_code}"
+            else:
+                return f"_result_{name}[{col_literal}].{op_code}"
+
+        if operation == "fillna":
+            fill_value = props.get("fill_value", 0)
+            # fillna doesn't really need groupby usually, but for consistency... 
+            # actually fillna is element-wise. Groupby fillna (ffill/bfill) is different.
+            # For simple value fill, no groupby needed.
+            add(f"_result_{name}[{out_literal}] = _result_{name}[{col_literal}].fillna({fill_value})")
+        elif operation == "diff":
+            periods = int(props.get("periods", 1))
+            add(f"_result_{name}[{out_literal}] = {apply_op(f'diff({periods})')}.fillna(0)")
+        elif operation == "pct_change":
+            periods = int(props.get("periods", 1))
+            add(f"_result_{name}[{out_literal}] = {apply_op(f'pct_change({periods})')}.fillna(0)")
+        elif operation == "shift":
+            periods = int(props.get("periods", 1))
+            add(f"_result_{name}[{out_literal}] = {apply_op(f'shift({periods})')}")
+        elif operation == "cumsum":
+            add(f"_result_{name}[{out_literal}] = {apply_op('cumsum()')}")
+        elif operation == "log":
+            add(f"_result_{name}[{out_literal}] = np.log(_result_{name}[{col_literal}] + 1e-10)")
+        elif operation == "sqrt":
+            add(f"_result_{name}[{out_literal}] = np.sqrt(np.abs(_result_{name}[{col_literal}]))")
+        elif operation == "abs":
+            add(f"_result_{name}[{out_literal}] = np.abs(_result_{name}[{col_literal}])")
+        elif operation == "round":
+            decimals = int(props.get("decimals", 0))
+            add(f"_result_{name}[{out_literal}] = _result_{name}[{col_literal}].round({decimals})")
+        else:
+            add(f"_result_{name}[{out_literal}] = _result_{name}[{col_literal}]")
+        
+        add(f"{name} = _result_{name}")
+        return name
+
+    def gen_merge_dataframes(node, inputs):
+        """Merge two dataframes"""
+        left = inputs[0][1] if len(inputs) > 0 else "pd.DataFrame()"
+        right = inputs[1][1] if len(inputs) > 1 else "pd.DataFrame()"
+        name = default_var_name(node)
+        props = node.get("properties", {}) or {}
+        how = str(props.get("how", "inner"))
+        left_on = str(props.get("left_on", ""))
+        right_on = str(props.get("right_on", ""))
+        on = str(props.get("on", ""))
+        
+        add(f"# Merge DataFrames ({how} join)")
+        add(f"_left_{name} = {left} if isinstance({left}, pd.DataFrame) else pd.DataFrame({left})")
+        add(f"_right_{name} = {right} if isinstance({right}, pd.DataFrame) else pd.DataFrame({right})")
+        
+        if on:
+            on_literal = json.dumps(on)
+            add(f"{name} = pd.merge(_left_{name}, _right_{name}, on={on_literal}, how='{how}')")
+        elif left_on and right_on:
+            left_on_literal = json.dumps(left_on)
+            right_on_literal = json.dumps(right_on)
+            add(f"{name} = pd.merge(_left_{name}, _right_{name}, left_on={left_on_literal}, right_on={right_on_literal}, how='{how}')")
+        else:
+            add(f"{name} = pd.merge(_left_{name}, _right_{name}, how='{how}')")
+        
+        return name
+
+    def gen_time_features(node, inputs):
+        """Extract time-based features from a date column"""
+        data = inputs[0][1] if len(inputs) > 0 else "pd.DataFrame()"
+        name = default_var_name(node)
+        props = node.get("properties", {}) or {}
+        date_column = str(props.get("date_column", "Year"))
+        features = str(props.get("features", "year,month,dayofweek"))
+        
+        add(f"# Extract Time Features")
+        add(f"_df_{name} = {data} if isinstance({data}, pd.DataFrame) else pd.DataFrame({data})")
+        add(f"_result_{name} = _df_{name}.copy()")
+        
+        date_col_literal = json.dumps(date_column)
+        add(f"_date_series_{name} = pd.to_datetime(_result_{name}[{date_col_literal}], errors='coerce')")
+        
+        feature_list = [f.strip().lower() for f in features.split(",") if f.strip()]
+        for feat in feature_list:
+            if feat == "year":
+                add(f"_result_{name}['year'] = _date_series_{name}.dt.year")
+            elif feat == "month":
+                add(f"_result_{name}['month'] = _date_series_{name}.dt.month")
+            elif feat == "day":
+                add(f"_result_{name}['day'] = _date_series_{name}.dt.day")
+            elif feat == "dayofweek":
+                add(f"_result_{name}['dayofweek'] = _date_series_{name}.dt.dayofweek")
+            elif feat == "quarter":
+                add(f"_result_{name}['quarter'] = _date_series_{name}.dt.quarter")
+            elif feat == "dayofyear":
+                add(f"_result_{name}['dayofyear'] = _date_series_{name}.dt.dayofyear")
+            elif feat == "weekofyear":
+                add(f"_result_{name}['weekofyear'] = _date_series_{name}.dt.isocalendar().week")
+        
+        add(f"{name} = _result_{name}")
+        return name
+
+    def gen_create_dummy(node, inputs):
+        """Generates dummy variables (one-hot encoding or binary flag)."""
+        data = inputs[0][1] if len(inputs) > 0 else "pd.DataFrame()"
+        name = default_var_name(node)
+        props = node.get("properties", {}) or {}
+        column = str(props.get("column", ""))
+        mode = str(props.get("mode", "onehot")).lower()
+        value = str(props.get("value", "")) # For binary mode
+        output_col = str(props.get("output_column", "")) # For binary mode
+        prefix = str(props.get("prefix", "")) or column
+
+        add(f"# Create Dummy Variables: mode={mode}")
+        add(f"_df_{name} = {data} if isinstance({data}, pd.DataFrame) else pd.DataFrame({data})")
+        add(f"_result_{name} = _df_{name}.copy()")
+        
+        col_literal = json.dumps(column)
+        
+        add(f"if {col_literal} in _result_{name}.columns:")
+        if mode == "binary":
+            out_literal = json.dumps(output_col or f"{column}_{value}_flag")
+            value_literal = json.dumps(value)
+            add(f"    _result_{name}[{out_literal}] = (_result_{name}[{col_literal}].astype(str) == {value_literal}).astype(int)")
+        else: # onehot
+            prefix_literal = json.dumps(prefix)
+            add(f"    _dummies_{name} = pd.get_dummies(_result_{name}[{col_literal}], prefix={prefix_literal}, dtype=int)")
+            add(f"    _result_{name} = pd.concat([_result_{name}, _dummies_{name}], axis=1)")
+            # Drop original column after encoding
+            add(f"    _result_{name} = _result_{name}.drop(columns=[{col_literal}])")
+        add(f"else:")
+        add(f"    print(f'Warning: Column \"{column}\" not found for dummy creation.')")
+
+        add(f"{name} = _result_{name}")
+        return name
+
+    def gen_map_values(node, inputs):
+        """Maps values in a column based on a dictionary."""
+        data = inputs[0][1] if len(inputs) > 0 else "pd.DataFrame()"
+        name = default_var_name(node)
+        props = node.get("properties", {}) or {}
+        column = str(props.get("column", ""))
+        mapping_dict_str = str(props.get("mapping_dict", "{}"))
+        default_value = props.get("default_value", None)
+        output_col = str(props.get("output_column", "")) or f"{column}_mapped"
+
+        add(f"# Map Values in Column")
+        add(f"_df_{name} = {data} if isinstance({data}, pd.DataFrame) else pd.DataFrame({data})")
+        add(f"_result_{name} = _df_{name}.copy()")
+        
+        col_literal = json.dumps(column)
+        out_literal = json.dumps(output_col)
+        
+        add(f"if {col_literal} in _result_{name}.columns:")
+        add(f"    try:")
+        add(f"        mapping_dict_{name} = json.loads('{mapping_dict_str}')")
+        add(f"        # Ensure keys are of the same type as the column if possible")
+        add(f"        col_type_{name} = _result_{name}[{col_literal}].dtype")
+        add(f"        if np.issubdtype(col_type_{name}, np.number):")
+        add(f"            mapping_dict_{name} = {{float(k): v for k, v in mapping_dict_{name}.items()}}")
+        add(f"        mapped_series_{name} = _result_{name}[{col_literal}].map(mapping_dict_{name})")
+        if default_value is not None:
+            default_literal = json.dumps(default_value)
+            add(f"        _result_{name}[{out_literal}] = mapped_series_{name}.fillna({default_literal})")
+        else:
+            add(f"        # If no default, keep original values for non-mapped items")
+            add(f"        _result_{name}[{out_literal}] = mapped_series_{name}.fillna(_result_{name}[{col_literal}])")
+        add(f"    except Exception as e:")
+        add(f"        print(f'Map Values node failed: {{e}}')")
+        add(f"        _result_{name}[{out_literal}] = _result_{name}[{col_literal}]")
+        add(f"else:")
+        add(f"    print(f'Warning: Column \"{column}\" not found for mapping.')")
+
+        add(f"{name} = _result_{name}")
+        return name
+
+    def gen_expression(node, inputs):
+        """Evaluates a pandas expression on a DataFrame."""
+        data = inputs[0][1] if len(inputs) > 0 else "pd.DataFrame()"
+        name = default_var_name(node)
+        props = node.get("properties", {}) or {}
+        expression = str(props.get("expression", "1")).strip()
+        output_col = str(props.get("output_column", "result")).strip()
+
+        add(f"# Evaluate Expression: '{output_col}' = {expression}")
+        add(f"_df_{name} = {data} if isinstance({data}, pd.DataFrame) else pd.DataFrame({data})")
+        add(f"_result_{name} = _df_{name}.copy()")
+        
+        expr_literal = json.dumps(expression)
+        out_literal = json.dumps(output_col)
+
+        add(f"try:")
+        # The result of eval is assigned to the new column
+        add(f"    _result_{name}[{out_literal}] = _result_{name}.eval({expr_literal}, engine='python')")
+        add(f"except Exception as e:")
+        add(f"    print(f'Expression node failed for expression \"{expression}\": {{e}}')")
+        add(f"    _result_{name}[{out_literal}] = np.nan")
+
+        add(f"{name} = _result_{name}")
         return name
 
     def gen_custom_python(node, inputs):
@@ -1403,6 +1816,15 @@ def generate_scope(graph_data: Dict[str, Any], initial_varmap: Dict[int, Any] = 
         "math/constant": gen_constant,
         "data/vector": gen_vector,
         "data/matrix": gen_matrix,
+        "data/filter_rows": gen_filter_rows,
+        "data/group_aggregate": gen_group_aggregate,
+        "data/rolling_window": gen_rolling_window,
+        "data/transform_column": gen_transform_column,
+        "data/merge_dataframes": gen_merge_dataframes,
+        "data/time_features": gen_time_features,
+        "data/create_dummy": gen_create_dummy,
+        "data/map_values": gen_map_values,
+        "data/expression": gen_expression,
         "math/add": binop("+"),
         "math/subtract": binop("-"),
         "math/multiply": binop("*"),

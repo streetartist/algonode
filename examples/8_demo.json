@@ -1,0 +1,152 @@
+{
+  "last_node_id": 10,
+  "last_link_id": 9,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "data/load_csv",
+      "pos": [50, 50],
+      "size": [260, 100],
+      "properties": {
+        "path": "question/2025_Problem_C_Data/summerOly_medal_counts.csv",
+        "header": 0,
+        "encoding": "utf-8",
+        "output_format": "dataframe"
+      },
+      "outputs": [{"name": "Data", "type": "matrix", "links": [1]}]
+    },
+    {
+      "id": 2,
+      "type": "data/filter_rows",
+      "pos": [350, 50],
+      "size": [260, 100],
+      "properties": {
+        "condition": "Year >= 1988",
+        "output_format": "dataframe"
+      },
+      "inputs": [{"name": "Data", "type": "matrix", "link": 1}],
+      "outputs": [{"name": "Filtered", "type": "matrix", "links": [2]}]
+    },
+    {
+      "id": 3,
+      "type": "data/rolling_window",
+      "pos": [650, 50],
+      "size": [280, 140],
+      "properties": {
+        "column": "Gold",
+        "window": 3,
+        "operation": "mean",
+        "groupby": "NOC",
+        "min_periods": 1,
+        "output_column": "gold_avg_3"
+      },
+      "inputs": [{"name": "Data", "type": "matrix", "link": 2}],
+      "outputs": [{"name": "Result", "type": "matrix", "links": [3]}]
+    },
+    {
+      "id": 4,
+      "type": "data/rolling_window",
+      "pos": [970, 50],
+      "size": [280, 140],
+      "properties": {
+        "column": "Gold",
+        "window": 5,
+        "operation": "mean",
+        "groupby": "NOC",
+        "min_periods": 1,
+        "output_column": "gold_avg_5"
+      },
+      "inputs": [{"name": "Data", "type": "matrix", "link": 3}],
+      "outputs": [{"name": "Result", "type": "matrix", "links": [4]}]
+    },
+    {
+      "id": 5,
+      "type": "data/transform_column",
+      "pos": [650, 250],
+      "size": [280, 120],
+      "properties": {
+        "column": "Gold",
+        "operation": "diff",
+        "periods": 1,
+        "output_column": "gold_momentum"
+      },
+      "inputs": [{"name": "Data", "type": "matrix", "link": 4}],
+      "outputs": [{"name": "Result", "type": "matrix", "links": [5]}]
+    },
+    {
+      "id": 6,
+      "type": "data/transform_column",
+      "pos": [970, 250],
+      "size": [280, 120],
+      "properties": {
+        "column": "gold_momentum",
+        "operation": "fillna",
+        "fill_value": 0,
+        "output_column": "gold_momentum"
+      },
+      "inputs": [{"name": "Data", "type": "matrix", "link": 5}],
+      "outputs": [{"name": "Result", "type": "matrix", "links": [6]}]
+    },
+    {
+      "id": 7,
+      "type": "data/load_csv",
+      "pos": [50, 450],
+      "size": [260, 100],
+      "properties": {
+        "path": "question/2025_Problem_C_Data/summerOly_hosts.csv",
+        "header": 0,
+        "encoding": "utf-8",
+        "output_format": "dataframe"
+      },
+      "outputs": [{"name": "Data", "type": "matrix", "links": [7]}]
+    },
+    {
+      "id": 8,
+      "type": "data/merge_dataframes",
+      "pos": [650, 400],
+      "size": [280, 120],
+      "properties": {
+        "how": "left",
+        "on": "Year"
+      },
+      "inputs": [
+        {"name": "Left", "type": "matrix", "link": 6},
+        {"name": "Right", "type": "matrix", "link": 7}
+      ],
+      "outputs": [{"name": "Merged", "type": "matrix", "links": [8]}]
+    },
+    {
+      "id": 9,
+      "type": "data/time_features",
+      "pos": [970, 400],
+      "size": [280, 120],
+      "properties": {
+        "date_column": "Year",
+        "features": "year"
+      },
+      "inputs": [{"name": "Data", "type": "matrix", "link": 8}],
+      "outputs": [{"name": "Features", "type": "matrix", "links": [9]}]
+    },
+    {
+      "id": 10,
+      "type": "io/output",
+      "pos": [1290, 400],
+      "size": [220, 80],
+      "properties": {
+        "name": "processed_data"
+      },
+      "inputs": [{"name": "In", "type": "", "link": 9}]
+    }
+  ],
+  "links": [
+    [1, 1, 0, 2, 0, "matrix"],
+    [2, 2, 0, 3, 0, "matrix"],
+    [3, 3, 0, 4, 0, "matrix"],
+    [4, 4, 0, 5, 0, "matrix"],
+    [5, 5, 0, 6, 0, "matrix"],
+    [6, 6, 0, 8, 0, "matrix"],
+    [7, 7, 0, 8, 1, "matrix"],
+    [8, 8, 0, 9, 0, "matrix"],
+    [9, 9, 0, 10, 0, ""]
+  ]
+}

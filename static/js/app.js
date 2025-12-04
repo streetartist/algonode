@@ -432,9 +432,19 @@ registerNode("stat/discriminant", "Discriminant Analysis", [["X", "matrix"], ["y
 // Data Preprocessing
 registerNode("data/normalize", "Data Normalization", [["Data", "array"]], [["Normalized", "array"]], { method: "minmax" }, "text");
 registerNode("data/split", "Train Test Split", [["X", "array"], ["y", "array"]], [["X_train", "array"], ["X_test", "array"], ["y_train", "array"], ["y_test", "array"]], { test_size: 0.2, random_state: 42 }, "text");
-registerNode("data/load_csv", "Load CSV", [], [["Data", "matrix"]], { path: "data.csv", header: 0 }, "text");
-registerNode("data/load_excel", "Load Excel", [], [["Data", "matrix"]], { path: "data.xlsx", sheet: 0 }, "text");
-registerNode("data/select_column", "Select Column", [["Data", "matrix"]], [["Column", "array"]], { index: 0 }, "text");
+registerNode("data/load_csv", "Load CSV", [], [["Data", "matrix"]], { path: "data.csv", header: 0, encoding: "utf-8", usecols: "", output_format: "matrix" }, "text");
+registerNode("data/load_excel", "Load Excel", [], [["Data", "matrix"]], { path: "data.xlsx", sheet: 0, usecols: "", output_format: "matrix" }, "text");
+registerNode("data/select_column", "Select Column", [["Data", "matrix"]], [["Column", "array"]], { selector: "0", mode: "index", as_array: true }, "text");
+registerNode("data/filter_rows", "Filter Rows", [["Data", "matrix"]], [["Filtered", "matrix"]], { condition: "Total > 0", reset_index: true, output_format: "dataframe" }, "text");
+registerNode("data/group_aggregate", "Group & Aggregate", [["Data", "matrix"]], [["Aggregated", "matrix"]], { group_by: "NOC", aggregations: "Gold:sum,Silver:sum", reset_index: true, flatten_columns: true, output_format: "dataframe" }, "text");
+
+// Enhanced Data Transformation Nodes
+registerNode("data/rolling_window", "Rolling Window", [["Data", "matrix"]], [["Result", "matrix"]], { column: "Gold", window: 3, operation: "mean", groupby: "", min_periods: 1, output_column: "" }, "text");
+registerNode("data/transform_column", "Transform Column", [["Data", "matrix"]], [["Result", "matrix"]], { column: "Gold", operation: "diff", periods: 1, fill_value: 0, decimals: 2, output_column: "" }, "text");
+registerNode("data/merge_dataframes", "Merge DataFrames", [["Left", "matrix"], ["Right", "matrix"]], [["Merged", "matrix"]], { how: "inner", on: "", left_on: "", right_on: "" }, "text");
+registerNode("data/time_features", "Time Features", [["Data", "matrix"]], [["Features", "matrix"]], { date_column: "Year", features: "year,month,dayofweek" }, "text");
+registerNode("data/create_dummy", "Create Dummy Variables", [["Data", "matrix"]], [["Result", "matrix"]], { column: "NOC", mode: "onehot", value: "", output_column: "", prefix: "" }, "text");
+registerNode("data/expression", "Expression", [["Data", "matrix"]], [["Result", "matrix"]], { expression: "(A + B) / 2", output_column: "result" }, "text");
 
 // Visualization
 registerNode("viz/plot_line", "Line Plot", [["X", "array"], ["Y", "array"]], [], { title: "Line Plot" }, "text");
@@ -483,6 +493,8 @@ const nodeCategories = [
             { type: "data/load_csv", label: "读取 CSV" },
             { type: "data/load_excel", label: "读取 Excel" },
             { type: "data/select_column", label: "选择列" },
+            { type: "data/filter_rows", label: "条件筛选" },
+            { type: "data/group_aggregate", label: "分组聚合" },
             { type: "io/output", label: "输出节点" }
         ]
     },
@@ -490,7 +502,13 @@ const nodeCategories = [
         name: "🧹 数据预处理",
         nodes: [
             { type: "data/normalize", label: "数据归一化" },
-            { type: "data/split", label: "训练测试集分割" }
+            { type: "data/split", label: "训练测试集分割" },
+            { type: "data/rolling_window", label: "滚动窗口" },
+            { type: "data/transform_column", label: "列变换" },
+            { type: "data/merge_dataframes", label: "合并数据" },
+            { type: "data/time_features", label: "时间特征" },
+            { type: "data/create_dummy", label: "虚拟变量" },
+            { type: "data/expression", label: "表达式计算" }
         ]
     },
     {
@@ -1768,5 +1786,3 @@ function showToast(message, type = "success", duration = 3000) {
     }
 
 })();
-
-
