@@ -1260,31 +1260,37 @@ document.getElementById("btnSample").addEventListener("click", () => {
     nodeX.properties.name = "X_train";
     nodeX.properties.values = "1, 2, 3, 4, 5";
     graph.add(nodeX);
+    nodeX.onConfigure();
 
     var nodeY = LiteGraph.createNode("data/vector");
     nodeY.pos = [50, 200];
     nodeY.properties.name = "y_train";
     nodeY.properties.values = "2.1, 3.9, 6.1, 8.0, 10.2";
     graph.add(nodeY);
+    nodeY.onConfigure();
 
     var nodeFit = LiteGraph.createNode("model/linear_regression_fit");
     nodeFit.pos = [300, 100];
     graph.add(nodeFit);
+    nodeFit.onConfigure();
 
     var nodeXTest = LiteGraph.createNode("data/vector");
     nodeXTest.pos = [300, 300];
     nodeXTest.properties.name = "X_test";
     nodeXTest.properties.values = "6, 7";
     graph.add(nodeXTest);
+    nodeXTest.onConfigure();
 
     var nodePredict = LiteGraph.createNode("model/predict");
     nodePredict.pos = [600, 150];
     graph.add(nodePredict);
+    nodePredict.onConfigure();
 
     var nodeOut = LiteGraph.createNode("io/output");
     nodeOut.pos = [850, 150];
     nodeOut.properties.name = "predictions";
     graph.add(nodeOut);
+    nodeOut.onConfigure();
 
     nodeX.connect(0, nodeFit, 0);
     nodeY.connect(0, nodeFit, 1);

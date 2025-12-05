@@ -78,7 +78,12 @@ class Graph:
 
 def sanitize_name(name: str) -> str:
     import re
-    s = name.strip().lower().replace(" ", "_")
+    # Keep the original case of the provided name while
+    # normalizing spaces and removing invalid characters.
+    # Previously this function lower-cased names which caused
+    # the generated code to lose the original casing of `name`.
+    # Now we preserve case so user-specified capitalization survives.
+    s = name.strip().replace(" ", "_")
     s = re.sub(r"[^0-9a-zA-Z_]+", "", s)
     if not s:
         s = "var"
