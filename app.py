@@ -224,6 +224,59 @@ def generate_scope(graph_data: Dict[str, Any], initial_varmap: Dict[int, Any] = 
         add(f"{name} = np.linalg.det({m_expr})")
         return name
 
+    def gen_linspace(node, inputs):
+        name = default_var_name(node)
+        props = node.get("properties", {}) or {}
+        start = float(props.get("start", 0))
+        stop = float(props.get("stop", 1))
+        num = int(props.get("num", 50))
+        add(f"# Linspace sequence")
+        add(f"{name} = np.linspace({start}, {stop}, {num})")
+        return name
+
+    def gen_lu_decompose(node, inputs):
+        a = inputs[0][1] if inputs else "np.eye(2)"
+        name = default_var_name(node)
+        props = node.get("properties", {}) or {}
+        permute_l = bool(props.get("permute_l", False))
+        add(f"# LU Decomposition")
+        add(f"_A_{name} = np.asarray({a})")
+        add(f"P_{name}, L_{name}, U_{name} = scipy.linalg.lu(_A_{name}, permute_l={permute_l})")
+        add(f"{name}_P, {name}_L, {name}_U = P_{name}, L_{name}, U_{name}")
+        return {0: f"{name}_P", 1: f"{name}_L", 2: f"{name}_U"}
+
+    def gen_qr(node, inputs):
+        a = inputs[0][1] if inputs else "np.eye(2)"
+        name = default_var_name(node)
+        mode = str(node.get("properties", {}).get("mode", "reduced")) or "reduced"
+        add(f"# QR Decomposition")
+        add(f"_A_{name} = np.asarray({a})")
+        add(f"{name}_Q, {name}_R = np.linalg.qr(_A_{name}, mode={json.dumps(mode)})")
+        return {0: f"{name}_Q", 1: f"{name}_R"}
+
+    def gen_svd(node, inputs):
+        a = inputs[0][1] if inputs else "np.eye(2)"
+        name = default_var_name(node)
+        full_matrices = bool(node.get("properties", {}).get("full_matrices", False))
+        add(f"# Singular Value Decomposition")
+        add(f"_A_{name} = np.asarray({a})")
+        add(f"{name}_U, {name}_S, {name}_Vh = np.linalg.svd(_A_{name}, full_matrices={full_matrices})")
+        return {0: f"{name}_U", 1: f"{name}_S", 2: f"{name}_Vh"}
+
+    def gen_conv(node, inputs):
+        x = inputs[0][1] if len(inputs) > 0 else "np.array([])"
+        h = inputs[1][1] if len(inputs) > 1 else "np.array([])"
+        name = default_var_name(node)
+        mode = str(node.get("properties", {}).get("mode", "full")) or "full"
+        add(f"# 1D Convolution")
+        add(f"_x_{name} = np.asarray({x}).ravel()")
+        add(f"_h_{name} = np.asarray({h}).ravel()")
+        add(f"try:")
+        add(f"    {name} = np.convolve(_x_{name}, _h_{name}, mode={json.dumps(mode)})")
+        add(f"except Exception:")
+        add(f"    {name} = np.array([])")
+        return name
+
     # --- 1. Algo Implementations ---
 
     def gen_monte_carlo(node, inputs):
@@ -918,6 +971,40 @@ def generate_scope(graph_data: Dict[str, Any], initial_varmap: Dict[int, Any] = 
         add(f"{name} = {{'theta': _theta, 'fit_intercept': {str(fit_intercept)}}}")
         return name
 
+    def gen_ridge(node, inputs):
+        X = inputs[0][1] if len(inputs) > 0 else None
+        y = inputs[1][1] if len(inputs) > 1 else None
+        name = default_var_name(node)
+        alpha = float(node.get("properties", {}).get("alpha", 1.0))
+        fit_intercept = bool(node.get("properties", {}).get("fit_intercept", True))
+        add("# Ridge Regression")
+        add(f"{name} = Ridge(alpha={alpha}, fit_intercept={fit_intercept})")
+        add(f"if {X} is not None and {y} is not None:")
+        add(f"    {name}.fit({X}, {y})")
+        return name
+
+    def gen_lasso(node, inputs):
+        X = inputs[0][1] if len(inputs) > 0 else None
+        y = inputs[1][1] if len(inputs) > 1 else None
+        name = default_var_name(node)
+        alpha = float(node.get("properties", {}).get("alpha", 1.0))
+        fit_intercept = bool(node.get("properties", {}).get("fit_intercept", True))
+        add("# Lasso Regression")
+        add(f"{name} = Lasso(alpha={alpha}, fit_intercept={fit_intercept})")
+        add(f"if {X} is not None and {y} is not None:")
+        add(f"    {name}.fit({X}, {y})")
+        return name
+
+    def gen_poly_features(node, inputs):
+        X = inputs[0][1] if len(inputs) > 0 else None
+        name = default_var_name(node)
+        degree = int(node.get("properties", {}).get("degree", 2))
+        include_bias = bool(node.get("properties", {}).get("include_bias", True))
+        add("# Polynomial Features")
+        add(f"_pf_{name} = PolynomialFeatures(degree={degree}, include_bias={include_bias})")
+        add(f"{name} = _pf_{name}.fit_transform({X}) if {X} is not None else np.array([])")
+        return name
+
     def gen_predict(node, inputs):
         model = inputs[0][1] if len(inputs) > 0 else None
         X = inputs[1][1] if len(inputs) > 1 else None
@@ -938,6 +1025,66 @@ def generate_scope(graph_data: Dict[str, Any], initial_varmap: Dict[int, Any] = 
         y_pred = inputs[1][1] if len(inputs) > 1 else None
         name = default_var_name(node)
         add(f"{name} = float(np.mean((({y_true if y_true else '0'}) - ({y_pred if y_pred else '0'}))**2))")
+        return name
+
+    def gen_mae(node, inputs):
+        y_true = inputs[0][1] if len(inputs) > 0 else "np.array([])"
+        y_pred = inputs[1][1] if len(inputs) > 1 else "np.array([])"
+        name = default_var_name(node)
+        add("# Mean Absolute Error")
+        add(f"_y_true_{name} = np.asarray({y_true}).ravel()")
+        add(f"_y_pred_{name} = np.asarray({y_pred}).ravel()")
+        add(f"_len_{name} = min(_y_true_{name}.size, _y_pred_{name}.size)")
+        add(f"if _len_{name}:")
+        add(f"    {name} = float(np.mean(np.abs(_y_true_{name}[:_len_{name}] - _y_pred_{name}[:_len_{name}])))")
+        add(f"else:")
+        add(f"    {name} = 0.0")
+        return name
+
+    def gen_rmse(node, inputs):
+        y_true = inputs[0][1] if len(inputs) > 0 else "np.array([])"
+        y_pred = inputs[1][1] if len(inputs) > 1 else "np.array([])"
+        name = default_var_name(node)
+        add("# Root Mean Square Error")
+        add(f"_y_true_{name} = np.asarray({y_true}).ravel()")
+        add(f"_y_pred_{name} = np.asarray({y_pred}).ravel()")
+        add(f"_len_{name} = min(_y_true_{name}.size, _y_pred_{name}.size)")
+        add(f"if _len_{name}:")
+        add(f"    {name} = float(np.sqrt(np.mean((_y_true_{name}[:_len_{name}] - _y_pred_{name}[:_len_{name}])**2)))")
+        add(f"else:")
+        add(f"    {name} = 0.0")
+        return name
+
+    def gen_r2(node, inputs):
+        y_true = inputs[0][1] if len(inputs) > 0 else "np.array([])"
+        y_pred = inputs[1][1] if len(inputs) > 1 else "np.array([])"
+        name = default_var_name(node)
+        add("# R^2 Score")
+        add(f"_y_true_{name} = np.asarray({y_true}).ravel()")
+        add(f"_y_pred_{name} = np.asarray({y_pred}).ravel()")
+        add(f"_len_{name} = min(_y_true_{name}.size, _y_pred_{name}.size)")
+        add(f"if _len_{name}:")
+        add(f"    _res_{name} = _y_true_{name}[:_len_{name}] - _y_pred_{name}[:_len_{name}]")
+        add(f"    _ss_res_{name} = float(np.sum(_res_{name}**2))")
+        add(f"    _ss_tot_{name} = float(np.sum((_y_true_{name}[:_len_{name}] - np.mean(_y_true_{name}[:_len_{name}]))**2))")
+        add(f"    {name} = float(1 - _ss_res_{name} / (_ss_tot_{name} + 1e-10))")
+        add(f"else:")
+        add(f"    {name} = 0.0")
+        return name
+
+    def gen_accuracy(node, inputs):
+        y_true = inputs[0][1] if len(inputs) > 0 else "np.array([])"
+        y_pred = inputs[1][1] if len(inputs) > 1 else "np.array([])"
+        name = default_var_name(node)
+        add("# Classification Accuracy")
+        add(f"_y_true_{name} = np.asarray({y_true}).ravel()")
+        add(f"_y_pred_{name} = np.asarray({y_pred}).ravel()")
+        add(f"_len_{name} = min(_y_true_{name}.size, _y_pred_{name}.size)")
+        add(f"if _len_{name}:")
+        add(f"    _acc_{name} = _y_true_{name}[:_len_{name}] == _y_pred_{name}[:_len_{name}]")
+        add(f"    {name} = float(np.mean(_acc_{name}))")
+        add(f"else:")
+        add(f"    {name} = 0.0")
         return name
 
     def gen_correlation(node, inputs):
@@ -969,6 +1116,37 @@ def generate_scope(graph_data: Dict[str, Any], initial_varmap: Dict[int, Any] = 
         add(f"# Discriminant Analysis")
         add(f"{name} = LinearDiscriminantAnalysis()")
         add(f"if {X} is not None and {y} is not None: {name}.fit({X}, {y})")
+        return name
+
+    def gen_autocorr(node, inputs):
+        series = inputs[0][1] if inputs else "np.array([])"
+        name = default_var_name(node)
+        nlags = int(node.get("properties", {}).get("nlags", 40))
+        demean = bool(node.get("properties", {}).get("demean", True))
+        add("# Auto-correlation")
+        add(f"_s_{name} = np.asarray({series}).ravel()")
+        add(f"if _s_{name}.size == 0:")
+        add(f"    {name}_acf = np.array([])")
+        add(f"else:")
+        add(f"    _s_center_{name} = _s_{name} - (_s_{name}.mean() if {demean} else 0)")
+        add(f"    try:")
+        add(f"        {name}_acf = sm.tsa.stattools.acf(_s_center_{name}, nlags={nlags}, fft=True)")
+        add(f"    except Exception:")
+        add(f"        {name}_acf = np.array([])")
+        add(f"{name}_lags = np.arange({name}_acf.size) if isinstance({name}_acf, np.ndarray) else np.array([])")
+        return {0: f"{name}_acf", 1: f"{name}_lags"}
+
+    def gen_pacf(node, inputs):
+        series = inputs[0][1] if inputs else "np.array([])"
+        name = default_var_name(node)
+        nlags = int(node.get("properties", {}).get("nlags", 20))
+        method = str(node.get("properties", {}).get("method", "yw"))
+        add("# Partial Auto-correlation")
+        add(f"_s_{name} = np.asarray({series}).ravel()")
+        add(f"try:")
+        add(f"    {name} = sm.tsa.stattools.pacf(_s_{name}, nlags={nlags}, method={json.dumps(method)}) if _s_{name}.size else np.array([])")
+        add(f"except Exception:")
+        add(f"    {name} = np.array([])")
         return name
 
     def gen_output(node, inputs):
@@ -1122,6 +1300,86 @@ def generate_scope(graph_data: Dict[str, Any], initial_varmap: Dict[int, Any] = 
         add(f"b_{name}, a_{name} = scipy.signal.butter({order}, {cutoff}, btype='{btype}', analog=False)")
         add(f"{name} = scipy.signal.filtfilt(b_{name}, a_{name}, {data}) if len({data}) > 0 else []")
         return name
+
+    def gen_signal_resample(node, inputs):
+        data = inputs[0][1] if inputs else "np.array([])"
+        fs_in = inputs[1][1] if len(inputs) > 1 else None
+        fs_out = inputs[2][1] if len(inputs) > 2 else None
+        name = default_var_name(node)
+        axis = int(node.get("properties", {}).get("axis", -1))
+        add("# Signal Resample")
+        add(f"_x_{name} = np.asarray({data})")
+        add(f"_fs_in_{name} = float({fs_in}) if {fs_in} is not None else 1.0")
+        add(f"_fs_out_{name} = float({fs_out}) if {fs_out} is not None else 1.0")
+        add(f"_target_n_{name} = max(1, int(round(_x_{name}.shape[{axis}] * _fs_out_{name} / _fs_in_{name}))) if _x_{name}.size else 0")
+        add(f"{name} = scipy.signal.resample(_x_{name}, _target_n_{name}, axis={axis}) if _target_n_{name} > 0 else np.array([])")
+        return name
+
+    def gen_signal_stft(node, inputs):
+        data = inputs[0][1] if inputs else "np.array([])"
+        name = default_var_name(node)
+        props = node.get("properties", {}) or {}
+        fs = float(props.get("fs", 1.0))
+        nperseg = int(props.get("nperseg", 256))
+        noverlap = int(props.get("noverlap", 128))
+        window = props.get("window", "hann") or "hann"
+        add("# Short-Time Fourier Transform")
+        add(f"_x_{name} = np.asarray({data})")
+        add(f"{name}_f, {name}_t, {name}_Z = scipy.signal.stft(_x_{name}, fs={fs}, window={json.dumps(window)}, nperseg={nperseg}, noverlap={noverlap})")
+        return {0: f"{name}_f", 1: f"{name}_t", 2: f"{name}_Z"}
+
+    def gen_bandpass_filter(node, inputs):
+        data = inputs[0][1] if inputs else "np.array([])"
+        name = default_var_name(node)
+        props = node.get("properties", {}) or {}
+        fs = float(props.get("fs", 1.0))
+        lowcut = float(props.get("lowcut", 0.1))
+        highcut = float(props.get("highcut", 0.5))
+        order = int(props.get("order", 4))
+        btype = props.get("btype", "bandpass") or "bandpass"
+        add("# Bandpass Filter")
+        add(f"_x_{name} = np.asarray({data})")
+        add(f"b_{name}, a_{name} = scipy.signal.butter({order}, [{lowcut}, {highcut}], btype='{btype}', fs={fs})")
+        add(f"{name} = scipy.signal.filtfilt(b_{name}, a_{name}, _x_{name}) if _x_{name}.size else np.array([])")
+        return name
+
+    def gen_xcorr(node, inputs):
+        x = inputs[0][1] if len(inputs) > 0 else "np.array([])"
+        y = inputs[1][1] if len(inputs) > 1 else "np.array([])"
+        name = default_var_name(node)
+        mode = str(node.get("properties", {}).get("mode", "full")) or "full"
+        add("# Cross Correlation")
+        add(f"_x_{name} = np.asarray({x}).ravel()")
+        add(f"_y_{name} = np.asarray({y}).ravel()")
+        add(f"{name}_corr = scipy.signal.correlate(_x_{name}, _y_{name}, mode={json.dumps(mode)})")
+        add(f"{name}_lags = scipy.signal.correlation_lags(len(_x_{name}), len(_y_{name}), mode={json.dumps(mode)})")
+        return {0: f"{name}_corr", 1: f"{name}_lags"}
+
+    def gen_transfer_function(node, inputs):
+        num = inputs[0][1] if len(inputs) > 0 else "[]"
+        den = inputs[1][1] if len(inputs) > 1 else "[]"
+        name = default_var_name(node)
+        add("# Transfer Function")
+        add(f"_num_{name} = np.asarray({num}, dtype=float)")
+        add(f"_den_{name} = np.asarray({den}, dtype=float)")
+        add(f"{name} = scipy.signal.TransferFunction(_num_{name}, _den_{name})")
+        return name
+
+    def gen_step_response(node, inputs):
+        sys_var = inputs[0][1] if inputs else "None"
+        name = default_var_name(node)
+        T_prop = str(node.get("properties", {}).get("T", "")).strip()
+        add("# Step Response")
+        add(f"_T_{name} = np.fromstring({json.dumps(T_prop)}, sep=',') if {json.dumps(T_prop)} else None")
+        add(f"{name}_t, {name}_y = scipy.signal.step({sys_var}, T=_T_{name}) if {sys_var} is not None else (np.array([]), np.array([]))")
+        return {0: f"{name}_t", 1: f"{name}_y"}
+
+    def gen_bode(node, inputs):
+        sys_var = inputs[0][1] if inputs else "None"
+        name = default_var_name(node)
+        add("# Bode Plot Data")
+        add(f"{name}_w, {name}_mag, {name}_phase = scipy.signal.bode({sys_var}) if {sys_var} is not None else (np.array([]), np.array([]), np.array([]))")
+        return {0: f"{name}_w", 1: f"{name}_mag", 2: f"{name}_phase"}
 
     def gen_plot_hist(node, inputs):
         X = inputs[0][1] if len(inputs) > 0 else "None"
@@ -1343,6 +1601,80 @@ def generate_scope(graph_data: Dict[str, Any], initial_varmap: Dict[int, Any] = 
             add(f"{name} = _agg_{name}.values")
         else:
             add(f"{name} = _agg_{name}")
+        return name
+
+    def gen_pivot_table(node, inputs):
+        data = inputs[0][1] if inputs else "pd.DataFrame()"
+        name = default_var_name(node)
+        props = node.get("properties", {}) or {}
+        index_cols = [c.strip() for c in str(props.get("index", "")).split(",") if c.strip()]
+        column_cols = [c.strip() for c in str(props.get("columns", "")).split(",") if c.strip()]
+        values_col = str(props.get("values", "")).strip()
+        aggfunc = props.get("aggfunc", "mean") or "mean"
+        fill_value = props.get("fill_value", "")
+        margins = bool(props.get("margins", False))
+
+        index_literal = "[" + ", ".join(repr(c) for c in index_cols) + "]" if index_cols else "None"
+        column_literal = "[" + ", ".join(repr(c) for c in column_cols) + "]" if column_cols else "None"
+        values_literal = repr(values_col) if values_col else "None"
+        fill_literal = "None" if fill_value == "" else repr(fill_value)
+
+        add("# Pivot Table")
+        add(f"_df_{name} = {data} if isinstance({data}, pd.DataFrame) else pd.DataFrame({data})")
+        add(f"{name} = pd.pivot_table(_df_{name}, index={index_literal}, columns={column_literal}, values={values_literal}, aggfunc={repr(aggfunc)}, fill_value={fill_literal}, margins={margins})")
+        return name
+
+    def gen_conditional_column(node, inputs):
+        data = inputs[0][1] if inputs else "pd.DataFrame()"
+        name = default_var_name(node)
+        props = node.get("properties", {}) or {}
+        condition = str(props.get("condition", ""))
+        true_value = props.get("true_value", 1)
+        false_value = props.get("false_value", 0)
+        output_col = str(props.get("output_column", "flag")) or "flag"
+
+        cond_literal = json.dumps(condition)
+        out_literal = json.dumps(output_col)
+
+        add("# Conditional Column")
+        add(f"_df_{name} = {data} if isinstance({data}, pd.DataFrame) else pd.DataFrame({data})")
+        add(f"_result_{name} = _df_{name}.copy()")
+        add(f"try:")
+        add(f"    _mask_{name} = _result_{name}.eval({cond_literal})")
+        add(f"except Exception:")
+        add(f"    _mask_{name} = False")
+        add(f"_result_{name}[{out_literal}] = np.where(_mask_{name}, {json.dumps(true_value)}, {json.dumps(false_value)})")
+        add(f"{name} = _result_{name}")
+        return name
+
+    def gen_describe(node, inputs):
+        """Quickly summarize a dataset to reduce ad-hoc inspection code."""
+        data = inputs[0][1] if inputs else "pd.DataFrame()"
+        name = default_var_name(node)
+        props = node.get("properties", {}) or {}
+        include = str(props.get("include", "all")) or "all"
+        percentiles_raw = str(props.get("percentiles", "0.25,0.5,0.75"))
+
+        percentiles: List[float] = []
+        for p in percentiles_raw.split(","):
+            try:
+                val = float(p.strip())
+                if 0 < val < 1:
+                    percentiles.append(val)
+            except Exception:
+                continue
+        if not percentiles:
+            percentiles = [0.25, 0.5, 0.75]
+
+        include_literal = json.dumps(include)
+
+        add("# Describe DataFrame")
+        add(f"_df_{name} = {data} if isinstance({data}, pd.DataFrame) else pd.DataFrame({data})")
+        add(f"_percentiles_{name} = {percentiles}")
+        add(f"try:")
+        add(f"    {name} = _df_{name}.describe(include={include_literal}, percentiles=_percentiles_{name})")
+        add(f"except Exception:")
+        add(f"    {name} = _df_{name}")
         return name
 
     def gen_rolling_window(node, inputs):
@@ -1588,6 +1920,35 @@ def generate_scope(graph_data: Dict[str, Any], initial_varmap: Dict[int, Any] = 
         add(f"{name} = _result_{name}")
         return name
 
+    def gen_explode_column(node, inputs):
+        """Expands list-like entries in a column into separate rows."""
+        data = inputs[0][1] if len(inputs) > 0 else "pd.DataFrame()"
+        name = default_var_name(node)
+        props = node.get("properties", {}) or {}
+        column = str(props.get("column", ""))
+        output_col = str(props.get("output_column", "")).strip()
+        ignore_index = bool(props.get("ignore_index", True))
+
+        add(f"# Explode Column")
+        add(f"_df_{name} = {data} if isinstance({data}, pd.DataFrame) else pd.DataFrame({data})")
+        add(f"_result_{name} = _df_{name}.copy()")
+
+        col_literal = json.dumps(column)
+        out_literal = json.dumps(output_col) if output_col else col_literal
+
+        add(f"if {col_literal} in _result_{name}.columns:")
+        if output_col and output_col != column:
+            add(f"    _result_{name}[{out_literal}] = _result_{name}[{col_literal}]")
+        add(f"    try:")
+        add(f"        _result_{name} = _result_{name}.explode({out_literal}, ignore_index={ignore_index})")
+        add(f"    except Exception as e:")
+        add(f"        print(f'Explode column failed for {column}: {{e}}')")
+        add(f"else:")
+        add(f"    print(f'Warning: Column \"{column}\" not found for explode.')")
+
+        add(f"{name} = _result_{name}")
+        return name
+
     def gen_expression(node, inputs):
         """Evaluates a pandas expression on a DataFrame."""
         data = inputs[0][1] if len(inputs) > 0 else "pd.DataFrame()"
@@ -1788,6 +2149,9 @@ def generate_scope(graph_data: Dict[str, Any], initial_varmap: Dict[int, Any] = 
         "data/load_csv": gen_load_csv,
         "data/load_excel": gen_load_excel,
         "data/select_column": gen_select_column,
+        "data/describe": gen_describe,
+        "data/pivot_table": gen_pivot_table,
+        "data/conditional_column": gen_conditional_column,
 
         # Visualization
         "viz/plot_line": gen_plot_line,
@@ -1809,9 +2173,23 @@ def generate_scope(graph_data: Dict[str, Any], initial_varmap: Dict[int, Any] = 
         "math/solve_linear": gen_solve_linear,
         "math/eigen": gen_eigen,
         "math/fft": gen_fft,
+        "math/linspace": gen_linspace,
+        "math/lu_decompose": gen_lu_decompose,
+        "math/qr": gen_qr,
+        "math/svd": gen_svd,
+        "math/conv": gen_conv,
 
         # New Signal
         "signal/filter": gen_signal_filter,
+        "signal/resample": gen_signal_resample,
+        "signal/stft": gen_signal_stft,
+        "signal/bandpass_filter": gen_bandpass_filter,
+        "signal/xcorr": gen_xcorr,
+
+        # Control
+        "control/transfer_function": gen_transfer_function,
+        "control/step_response": gen_step_response,
+        "control/bode_plot": gen_bode,
 
         "math/constant": gen_constant,
         "data/vector": gen_vector,
@@ -1824,6 +2202,7 @@ def generate_scope(graph_data: Dict[str, Any], initial_varmap: Dict[int, Any] = 
         "data/time_features": gen_time_features,
         "data/create_dummy": gen_create_dummy,
         "data/map_values": gen_map_values,
+        "data/explode_column": gen_explode_column,
         "data/expression": gen_expression,
         "math/add": binop("+"),
         "math/subtract": binop("-"),
@@ -1871,6 +2250,9 @@ def generate_scope(graph_data: Dict[str, Any], initial_varmap: Dict[int, Any] = 
         "model/time_series": gen_time_series,
         "model/markov_chain": gen_markov_chain,
         "model/linear_regression_fit": gen_lr_fit,
+        "model/ridge_regression": gen_ridge,
+        "model/lasso_regression": gen_lasso,
+        "model/poly_features": gen_poly_features,
         "model/predict": gen_predict,
 
         # Eval
@@ -1883,6 +2265,10 @@ def generate_scope(graph_data: Dict[str, Any], initial_varmap: Dict[int, Any] = 
         "eval/coupling": gen_coupling,
         "eval/bp_eval": gen_bp_eval,
         "metrics/mse": gen_mse,
+        "metrics/mae": gen_mae,
+        "metrics/rmse": gen_rmse,
+        "metrics/r2": gen_r2,
+        "metrics/accuracy": gen_accuracy,
 
         # Class
         "class/kmeans": gen_kmeans,
@@ -1900,6 +2286,8 @@ def generate_scope(graph_data: Dict[str, Any], initial_varmap: Dict[int, Any] = 
         "stat/correlation": gen_correlation,
         "stat/anova": gen_anova,
         "stat/discriminant": gen_discriminant,
+        "stat/autocorr": gen_autocorr,
+        "stat/pacf": gen_pacf,
     }
 
     # Loop over nodes in topological order
@@ -1927,6 +2315,7 @@ def generate_code(graph_data: Dict[str, Any]) -> str:
         "import scipy.optimize",
         "import scipy.interpolate",
         "import scipy.integrate",
+        "import scipy.linalg",
         "import scipy.stats",
         "import networkx as nx",
         "from sklearn.neural_network import MLPRegressor, MLPClassifier",
@@ -1935,9 +2324,11 @@ def generate_code(graph_data: Dict[str, Any]) -> str:
         "from sklearn.tree import DecisionTreeClassifier",
         "from sklearn.ensemble import RandomForestClassifier",
         "from sklearn.linear_model import LogisticRegression",
+        "from sklearn.linear_model import Ridge, Lasso",
         "from sklearn.naive_bayes import GaussianNB",
         "from sklearn.decomposition import PCA",
         "from sklearn.discriminant_analysis import LinearDiscriminantAnalysis",
+        "from sklearn.preprocessing import PolynomialFeatures",
         "import statsmodels.api as sm",
         "import matplotlib.pyplot as plt",
         "from mpl_toolkits.mplot3d import Axes3D",

@@ -1,330 +1,58 @@
-# MCM Problem C - 使用增强节点的简化工作流
+# Enhanced Nodes - Usage Guide
 
-## 对比：原方案 vs 新方案
+This guide shows how to apply the strengthened data nodes to common modeling tasks without writing custom code.
 
-### 原方案（需要 80+ 行自定义 Python 代码）
+## Quickstart (5 steps)
+1. Run `python app.py` and open `http://localhost:5000`.
+2. Drag nodes from **Data预处理** and **数据与输入** to build your pipeline.
+3. Configure properties in the node body (text/number widgets already bound to code generation).
+4. Click **Run Model** to execute; use **Output** node to inspect results in the browser or export Python code.
+5. Save the canvas as JSON to reuse or version your workflow.
 
-```
-节点 1: Load CSV (medals)
-节点 2: Load CSV (programs)  
-节点 3: Load CSV (hosts)
-      ↓
-节点 4: Custom Python Script (80+ 行代码)
-      - 数据清洗
-      - 移动平均计算 (3届/5届)
-      - 差分计算 (动量指标)
-      - 数据合并
-      - 主场标记
-      - 时间特征
-      ↓
-节点 5-16: 模型训练与预测
-```
+## Node recipes
+### Rolling Window (`data/rolling_window`)
+- Typical use: smoothing metrics or computing grouped moving averages.
+- Inputs: DataFrame with target column.
+- Set `column`, `window`, `operation` (`mean`, `sum`, `std`, `min`, `max`, `median`), optional `groupby` (`Team,Year`) and `min_periods`.
+- Leave `output_column` blank to auto-name as `{column}_{operation}_{window}`.
 
-**问题**：
-- ❌ 需要编写大量 Python 代码
-- ❌ 调试困难（80行代码在一个节点里）
-- ❌ 不可复用（其他问题需要重写）
-- ❌ 对非编程用户不友好
+### Transform Column (`data/transform_column`)
+- Use for differencing, percent change, shifts, cumulative sums, log/sqrt/abs, fillna, or rounding.
+- Key props: `column`, `operation`, `periods` (for diff/pct_change/shift), `fill_value`, `decimals`, optional `groupby`.
+- Output writes to `output_column` (auto `{column}_{operation}` if blank) without overwriting source unless you choose the same name.
 
----
+### Merge DataFrames (`data/merge_dataframes`)
+- Inputs: `Left`, `Right`. Set `how` (`inner`, `left`, `right`, `outer`).
+- Choose either shared `on` key or `left_on`/`right_on` pair. Defaults to pandas merge when keys are empty.
 
-### 新方案（完全可视化，0 行自定义代码）
+### Time Features (`data/time_features`)
+- Converts `date_column` to datetime and expands selected features (`year,month,day,dayofweek,quarter,dayofyear,weekofyear`).
+- Useful for ARIMA/ML models that need calendar signals.
 
-```
-[Load CSV: medals] → [Filter: Year>=1988] → [转数值型] 
-                                                ↓
-[Rolling: gold_avg_3, groupby=NOC] ← ← ← ← ← ← ↓
-                ↓
-[Rolling: gold_avg_5, groupby=NOC]
-                ↓
-[Rolling: total_avg_3, groupby=NOC]
-                ↓
-[Rolling: total_avg_5, groupby=NOC]
-                ↓
-[Transform: diff → gold_momentum]
-                ↓
-[Transform: fillna(0)]
-                ↓
-[Transform: diff → total_momentum]
-                ↓
-[Transform: fillna(0)]
-                ↓
-[Load CSV: hosts] → [Merge: on=Year] → [创建主场标记]
-                                            ↓
-                        [Time Features: year_centered]
-                                            ↓
-                        [Select Columns: 特征矩阵]
-                                            ↓
-                        [Split: train/test]
-                                            ↓
-                        [Linear Regression]
-```
+### Create Dummy (`data/create_dummy`)
+- Mode `onehot`: expands categorical column with `prefix` (defaults to column name) and drops the original.
+- Mode `binary`: set `value` and `output_column` for a single indicator.
 
-**优势**：
-- ✅ 完全可视化，拖拽配置
-- ✅ 每个节点功能单一，易于调试
-- ✅ 高度可复用（换数据集即可应用）
-- ✅ 零编程门槛
+### Conditional Column (`data/conditional_column`)
+- Enter a pandas-style expression in `condition` (e.g., `Gold > 0 & Silver > 0`).
+- Fills `true_value`/`false_value` into `output_column`.
 
----
+### Pivot Table (`data/pivot_table`)
+- Set `index`, `columns`, `values`, `aggfunc` (e.g., `mean`, `sum`), optional `fill_value`, `margins`.
+- Keeps DataFrame shape; downstream `select_column` can turn slices into arrays.
 
-## 具体节点配置示例
+### Explode Column (`data/explode_column`)
+- Use when a cell contains lists/strings to be expanded into rows. `ignore_index=true` to reindex after explosion.
 
-### 1. 计算 3 届移动平均金牌数
+### Expression (`data/expression`)
+- Lightweight arithmetic without writing a Python node. Example: `0.6 * A + 0.4 * B` → `result` column.
 
-**节点类型**: `data/rolling_window`
+## End-to-end workflow examples
+- Olympics momentum (enhanced demo): `examples/8_demo.json` chains Load CSV → Filter Rows → Rolling Window (3,5) → Transform (diff/fillna) → Merge Hosts → Time Features → Output.
+- Feature engineering starter: Load CSV → Create Dummy (categorical) → Transform Column (log/round) → Pivot Table → Select Column → Model/Metric.
 
-**配置**:
-```json
-{
-  "column": "Gold",
-  "window": 3,
-  "operation": "mean",
-  "groupby": "NOC",
-  "min_periods": 1,
-  "output_column": "gold_avg_3"
-}
-```
-
-**生成的 Python 代码**:
-```python
-_rolling = medals.groupby("NOC")["Gold"].rolling(3, min_periods=1)
-medals["gold_avg_3"] = _rolling.mean().reset_index(level=0, drop=True)
-```
-
----
-
-### 2. 计算金牌增长动量
-
-**节点类型**: `data/transform_column`
-
-**配置**:
-```json
-{
-  "column": "Gold",
-  "operation": "diff",
-  "periods": 1,
-  "output_column": "gold_momentum"
-}
-```
-
-**生成的 Python 代码**:
-```python
-medals["gold_momentum"] = medals["Gold"].diff(1).fillna(0)
-```
-
----
-
-### 3. 合并主办国数据
-
-**节点类型**: `data/merge_dataframes`
-
-**输入**:
-- Left: medals (奖牌数据)
-- Right: hosts (主办国数据)
-
-**配置**:
-```json
-{
-  "how": "left",
-  "on": "Year"
-}
-```
-
-**生成的 Python 代码**:
-```python
-merged = pd.merge(medals, hosts, on="Year", how="left")
-```
-
----
-
-### 4. 提取时间特征
-
-**节点类型**: `data/time_features`
-
-**配置**:
-```json
-{
-  "date_column": "Year",
-  "features": "year"
-}
-```
-
-**生成的 Python 代码**:
-```python
-medals["year"] = pd.to_datetime(medals["Year"]).dt.year
-base_year = medals["year"].min()
-medals["year_centered"] = medals["year"] - base_year
-```
-
----
-
-## 完整工作流 JSON 结构（简化版）
-
-```json
-{
-  "nodes": [
-    {
-      "id": 1,
-      "type": "data/load_csv",
-      "properties": {
-        "path": "summerOly_medal_counts.csv",
-        "output_format": "dataframe"
-      }
-    },
-    {
-      "id": 2,
-      "type": "data/filter_rows",
-      "properties": {
-        "condition": "Year >= 1988"
-      }
-    },
-    {
-      "id": 3,
-      "type": "data/rolling_window",
-      "properties": {
-        "column": "Gold",
-        "window": 3,
-        "operation": "mean",
-        "groupby": "NOC",
-        "output_column": "gold_avg_3"
-      }
-    },
-    {
-      "id": 4,
-      "type": "data/rolling_window",
-      "properties": {
-        "column": "Gold",
-        "window": 5,
-        "operation": "mean",
-        "groupby": "NOC",
-        "output_column": "gold_avg_5"
-      }
-    },
-    {
-      "id": 5,
-      "type": "data/transform_column",
-      "properties": {
-        "column": "Gold",
-        "operation": "diff",
-        "output_column": "gold_momentum"
-      }
-    },
-    {
-      "id": 6,
-      "type": "data/load_csv",
-      "properties": {
-        "path": "summerOly_hosts.csv"
-      }
-    },
-    {
-      "id": 7,
-      "type": "data/merge_dataframes",
-      "properties": {
-        "how": "left",
-        "on": "Year"
-      }
-    },
-    {
-      "id": 8,
-      "type": "data/time_features",
-      "properties": {
-        "date_column": "Year",
-        "features": "year"
-      }
-    }
-  ],
-  "links": [
-    [1, 1, 0, 2, 0],
-    [2, 2, 0, 3, 0],
-    [3, 3, 0, 4, 0],
-    [4, 4, 0, 5, 0],
-    [5, 5, 0, 7, 0],
-    [6, 6, 0, 7, 1],
-    [7, 7, 0, 8, 0]
-  ]
-}
-```
-
----
-
-## 节点数量对比
-
-| 指标 | 原方案 | 新方案 | 改进 |
-|------|--------|--------|------|
-| 自定义代码行数 | 80+ | 0 | -100% |
-| 需要编程知识 | 是 | 否 | ✅ |
-| 节点总数 | 16 | 20 | +25% |
-| 调试难度 | 高 | 低 | ✅ |
-| 可复用性 | 低 | 高 | ✅ |
-
----
-
-## 通用性验证
-
-这些新节点不仅适用于 MCM Problem C，还可以应用于：
-
-### 1. 股票预测
-```
-Load CSV (股票价格) 
-  → Rolling Window (5日均线/20日均线)
-  → Transform (价格变化率)
-  → Merge (成交量数据)
-  → 回归预测
-```
-
-### 2. 天气预报
-```
-Load CSV (历史气温)
-  → Time Features (月份/季节)
-  → Rolling Window (7天平均)
-  → Transform (温差)
-  → ARIMA 时序预测
-```
-
-### 3. 销售分析
-```
-Load CSV (销售记录)
-  → Time Features (年/季度/月)
-  → Rolling Window (季度移动平均)
-  → Group Aggregate (按地区汇总)
-  → 聚类分析
-```
-
----
-
-## 后续优化方向
-
-### Phase 2 节点（待实现）
-
-1. **data/create_dummy** - 虚拟变量生成
-   - 用于创建 one-hot 编码
-   - 示例：`host_flag = (NOC == "United States") ? 1 : 0`
-
-2. **data/conditional_column** - 条件生成列
-   - 支持 if-else 逻辑
-   - 示例：`category = Gold > 30 ? "Strong" : "Normal"`
-
-3. **data/pivot_table** - 数据透视
-   - 行列转换
-   - 多维度汇总
-
-4. **data/explode_column** - 列展开
-   - 将嵌套列表展开为多行
-   - 用于处理 JSON/数组字段
-
----
-
-## 总结
-
-通过引入这 4 个核心增强节点，我们成功将：
-- ✅ **80+ 行自定义代码 → 0 行**
-- ✅ **编程难度 → 拖拽配置**
-- ✅ **特定问题方案 → 通用数据处理框架**
-
-这是 AlgoNode 从"算法可视化工具"到"通用数据科学平台"的关键一步！
-
----
-
-*文档版本: v1.0*  
-*最后更新: 2025-12-03*
+## Tips for robust pipelines
+- Keep date columns in ISO strings before **Time Features**; the generator uses `errors='coerce'` to avoid crashes.
+- For grouped ops, provide comma-separated group keys and ensure they exist; missing keys degrade gracefully but may warn.
+- If a downstream model expects arrays, place **Select Column** or **Describe** to inspect shapes before training.
+- Reuse **Custom Python Script** only for edge cases; most pandas transforms are covered by the enhanced nodes to keep graphs readable.

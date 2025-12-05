@@ -89,10 +89,12 @@ function VectorNode() {
     this.addOutput("Vector", "array");
     this.properties = { name: "X", values: "1, 2, 3" };
     var self = this;
-    // Removed Name widget, use double click on title
+    // Name widget (was removed previously) — reintroducing for clarity
+    this.nameWidget = this.addWidget("text", "Name", this.properties.name, function(v) { self.properties.name = v; });
     this.valuesWidget = this.addWidget("text", "Values (csv)", this.properties.values, function(v) { self.properties.values = v; });
 }
 VectorNode.prototype.onConfigure = function() {
+    if (this.nameWidget) this.nameWidget.value = this.properties.name;
     if (this.valuesWidget) this.valuesWidget.value = this.properties.values;
 };
 VectorNode.title = "Vector";
@@ -103,10 +105,12 @@ function MatrixNode() {
     this.addOutput("Matrix", "matrix");
     this.properties = { name: "M", rows: "1, 0; 0, 1" };
     var self = this;
-    // Removed Name widget
+    // Name widget (was removed previously) — reintroducing
+    this.nameWidget = this.addWidget("text", "Name", this.properties.name, function(v) { self.properties.name = v; });
     this.rowsWidget = this.addWidget("text", "Rows (; for new row)", this.properties.rows, function(v) { self.properties.rows = v; });
 }
 MatrixNode.prototype.onConfigure = function() {
+    if (this.nameWidget) this.nameWidget.value = this.properties.name;
     if (this.rowsWidget) this.rowsWidget.value = this.properties.rows;
 };
 MatrixNode.title = "Matrix";
@@ -117,10 +121,12 @@ function ConstantNode() {
     this.addOutput("Value", "number");
     this.properties = { name: "c", value: 1.0 };
     var self = this;
-    // Removed Name widget
+    // Name widget (was removed previously) — reintroducing
+    this.nameWidget = this.addWidget("text", "Name", this.properties.name, function(v) { self.properties.name = v; });
     this.valueWidget = this.addWidget("number", "Value", this.properties.value, function(v) { self.properties.value = v; });
 }
 ConstantNode.prototype.onConfigure = function() {
+    if (this.nameWidget) this.nameWidget.value = this.properties.name;
     if (this.valueWidget) this.valueWidget.value = this.properties.value;
 };
 ConstantNode.title = "Constant";
@@ -137,7 +143,9 @@ function CustomPythonNode() {
     };
     var self = this;
     
-    // Removed Name widget
+    // Name widget (reintroduced)
+    this.properties.name = this.properties.name || "script";
+    this.nameWidget = this.addWidget("text", "Name", this.properties.name, function(v) { self.properties.name = v; });
 
     this.addWidget("text", "Inputs (comma sep)", this.properties.inputs, function(v) {
         self.properties.inputs = v;
@@ -198,6 +206,8 @@ CustomPythonNode.prototype.onConfigure = function() {
                 w.value = self.properties.inputs || "";
             } else if (w.name === "Outputs (comma sep)") {
                 w.value = self.properties.outputs || "";
+            } else if (w.name === "Name") {
+                w.value = self.properties.name || "";
             }
         });
     }
@@ -222,6 +232,7 @@ createMathNode("subtract", "-", "Subtract");
 createMathNode("multiply", "*", "Multiply");
 createMathNode("divide", "/", "Divide");
 createMathNode("power", "**", "Power");
+registerNode("math/linspace", "Linspace", [], [["Vector", "array"]], { start: 0, stop: 1, num: 50 }, "text");
 
 // Matrix-specific operations
 function MatMulNode() {
@@ -252,16 +263,21 @@ function DeterminantNode() {
 }
 DeterminantNode.title = "Determinant";
 LiteGraph.registerNodeType("math/determinant", DeterminantNode);
+registerNode("math/lu_decompose", "LU Decomposition", [["A", "matrix"]], [["P", "matrix"], ["L", "matrix"], ["U", "matrix"]], { permute_l: false }, "text");
+registerNode("math/qr", "QR Decomposition", [["A", "matrix"]], [["Q", "matrix"], ["R", "matrix"]], { mode: "reduced" }, "text");
+registerNode("math/svd", "SVD", [["A", "matrix"]], [["U", "matrix"], ["S", "array"], ["Vh", "matrix"]], { full_matrices: false }, "text");
+registerNode("math/conv", "1D Convolution", [["x", "array"], ["h", "array"]], [["y", "array"]], { mode: "full" }, "text");
 
 // Output
 function OutputNode() {
     this.addInput("In", "");
     this.properties = { name: "result" };
     var self = this;
-    // Removed Name widget
+    // Name widget (reintroduced)
+    this.nameWidget = this.addWidget("text", "Name", this.properties.name, function(v) { self.properties.name = v; });
 }
 OutputNode.prototype.onConfigure = function() {
-    // No widget to update
+    if (this.nameWidget) this.nameWidget.value = this.properties.name;
 };
 OutputNode.title = "Output";
 LiteGraph.registerNodeType("io/output", OutputNode);
@@ -353,6 +369,9 @@ registerNode("model/svm_predict", "SVM Prediction", [["X", "matrix"], ["y", "arr
 registerNode("model/grey_prediction", "Grey Prediction (GM(1,1))", [["Series", "array"]], [["Forecast", "array"]], { steps: 5 }, "text");
 registerNode("model/time_series", "Time Series (ARIMA)", [["Series", "array"]], [["Forecast", "array"]], { p: 1, d: 1, q: 1, steps: 5 }, "text");
 registerNode("model/markov_chain", "Markov Chain", [["TransMatrix", "matrix"], ["InitState", "array"]], [["NextState", "array"]], { steps: 1 }, "text");
+registerNode("model/ridge_regression", "Ridge Regression", [["X", "matrix"], ["y", "array"]], [["Model", "model"]], { alpha: 1.0, fit_intercept: true }, "text");
+registerNode("model/lasso_regression", "Lasso Regression", [["X", "matrix"], ["y", "array"]], [["Model", "model"]], { alpha: 1.0, fit_intercept: true }, "text");
+registerNode("model/poly_features", "Polynomial Features", [["X", "matrix"]], [["X_poly", "matrix"]], { degree: 2, include_bias: true }, "text");
 
 // 2.2 Evaluation
 registerNode("eval/ahp", "AHP (Hierarchy)", [["Criteria", "matrix"]], [["Weights", "array"]], {}, "text");
@@ -384,10 +403,12 @@ function LinearRegressionFit() {
     this.addOutput("Model", "model");
     this.properties = { name: "lr_model", fit_intercept: true };
     var self = this;
-    // Removed Name widget
+    // Name widget (reintroduced)
+    this.nameWidget = this.addWidget("text", "Name", this.properties.name, function(v) { self.properties.name = v; });
     this.interceptWidget = this.addWidget("toggle", "Intercept", this.properties.fit_intercept, function(v) { self.properties.fit_intercept = v; });
 }
 LinearRegressionFit.prototype.onConfigure = function() {
+    if (this.nameWidget) this.nameWidget.value = this.properties.name;
     if (this.interceptWidget) this.interceptWidget.value = this.properties.fit_intercept;
 };
 LinearRegressionFit.title = "Linear Regression Fit";
@@ -400,10 +421,11 @@ function PredictNode() {
     this.addOutput("y_pred", "array");
     this.properties = { name: "y_pred" };
     var self = this;
-    // Removed Name widget
+    // Name widget (reintroduced)
+    this.nameWidget = this.addWidget("text", "Name", this.properties.name, function(v) { self.properties.name = v; });
 }
 PredictNode.prototype.onConfigure = function() {
-    // No widget to update
+    if (this.nameWidget) this.nameWidget.value = this.properties.name;
 };
 PredictNode.title = "Predict";
 LiteGraph.registerNodeType("model/predict", PredictNode);
@@ -415,13 +437,18 @@ function MSENode() {
     this.addOutput("MSE", "number");
     this.properties = { name: "mse" };
     var self = this;
-    // Removed Name widget
+    // Name widget (reintroduced)
+    this.nameWidget = this.addWidget("text", "Name", this.properties.name, function(v) { self.properties.name = v; });
 }
 MSENode.prototype.onConfigure = function() {
-    // No widget to update
+    if (this.nameWidget) this.nameWidget.value = this.properties.name;
 };
 MSENode.title = "MSE";
 LiteGraph.registerNodeType("metrics/mse", MSENode);
+registerNode("metrics/mae", "MAE", [["y_true", "array"], ["y_pred", "array"]], [["MAE", "number"]], {}, "text");
+registerNode("metrics/rmse", "RMSE", [["y_true", "array"], ["y_pred", "array"]], [["RMSE", "number"]], {}, "text");
+registerNode("metrics/r2", "R2 Score", [["y_true", "array"], ["y_pred", "array"]], [["R2", "number"]], {}, "text");
+registerNode("metrics/accuracy", "Accuracy", [["y_true", "array"], ["y_pred", "array"]], [["Accuracy", "number"]], {}, "text");
 
 registerNode("stat/correlation", "Correlation Analysis", [["X", "array"], ["Y", "array"]], [["Coeff", "number"]], {}, "text");
 registerNode("stat/anova", "ANOVA", [["Group1", "array"], ["Group2", "array"]], [["F-stat", "number"], ["P-value", "number"]], {}, "text");
@@ -437,6 +464,9 @@ registerNode("data/load_excel", "Load Excel", [], [["Data", "matrix"]], { path: 
 registerNode("data/select_column", "Select Column", [["Data", "matrix"]], [["Column", "array"]], { selector: "0", mode: "index", as_array: true }, "text");
 registerNode("data/filter_rows", "Filter Rows", [["Data", "matrix"]], [["Filtered", "matrix"]], { condition: "Total > 0", reset_index: true, output_format: "dataframe" }, "text");
 registerNode("data/group_aggregate", "Group & Aggregate", [["Data", "matrix"]], [["Aggregated", "matrix"]], { group_by: "NOC", aggregations: "Gold:sum,Silver:sum", reset_index: true, flatten_columns: true, output_format: "dataframe" }, "text");
+registerNode("data/describe", "Describe Data", [["Data", "matrix"]], [["Summary", "matrix"]], { include: "all", percentiles: "0.25,0.5,0.75" }, "text");
+registerNode("data/pivot_table", "Pivot Table", [["Data", "matrix"]], [["Result", "matrix"]], { index: "", columns: "", values: "", aggfunc: "mean", fill_value: "", margins: false }, "text");
+registerNode("data/conditional_column", "Conditional Column", [["Data", "matrix"]], [["Result", "matrix"]], { condition: "Gold > 0", true_value: 1, false_value: 0, output_column: "flag" }, "text");
 
 // Enhanced Data Transformation Nodes
 registerNode("data/rolling_window", "Rolling Window", [["Data", "matrix"]], [["Result", "matrix"]], { column: "Gold", window: 3, operation: "mean", groupby: "", min_periods: 1, output_column: "" }, "text");
@@ -444,6 +474,8 @@ registerNode("data/transform_column", "Transform Column", [["Data", "matrix"]], 
 registerNode("data/merge_dataframes", "Merge DataFrames", [["Left", "matrix"], ["Right", "matrix"]], [["Merged", "matrix"]], { how: "inner", on: "", left_on: "", right_on: "" }, "text");
 registerNode("data/time_features", "Time Features", [["Data", "matrix"]], [["Features", "matrix"]], { date_column: "Year", features: "year,month,dayofweek" }, "text");
 registerNode("data/create_dummy", "Create Dummy Variables", [["Data", "matrix"]], [["Result", "matrix"]], { column: "NOC", mode: "onehot", value: "", output_column: "", prefix: "" }, "text");
+registerNode("data/map_values", "Map Values", [["Data", "matrix"]], [["Result", "matrix"]], { column: "Year", mapping_dict: "{\"2024\": 329}", default_value: "", output_column: "mapped" }, "text");
+registerNode("data/explode_column", "Explode Column", [["Data", "matrix"]], [["Result", "matrix"]], { column: "", output_column: "", ignore_index: true }, "text");
 registerNode("data/expression", "Expression", [["Data", "matrix"]], [["Result", "matrix"]], { expression: "(A + B) / 2", output_column: "result" }, "text");
 
 // Visualization
@@ -455,6 +487,8 @@ registerNode("algo/ode_solver", "ODE Solver", [["y0", "array"], ["t", "array"]],
 
 // Stat
 registerNode("stat/ttest", "T-Test", [["Group1", "array"], ["Group2", "array"]], [["P-value", "number"]], {}, "text");
+registerNode("stat/autocorr", "Auto-correlation", [["Series", "array"]], [["ACF", "array"], ["Lags", "array"]], { nlags: 40, demean: true }, "text");
+registerNode("stat/pacf", "Partial Auto-corr", [["Series", "array"]], [["PACF", "array"]], { nlags: 20, method: "yw" }, "text");
 
 // --- New Nodes (MATLAB/LINGO inspired) ---
 
@@ -471,6 +505,15 @@ registerNode("stat/chisquare", "Chi-Square Test", [["Observed", "array"], ["Expe
 
 // Signal
 registerNode("signal/filter", "Signal Filter", [["Data", "array"]], [["Filtered", "array"]], { order: 4, cutoff: 0.1, btype: "low" }, "text");
+registerNode("signal/resample", "Resample Signal", [["Data", "array"], ["fs_in", "number"], ["fs_out", "number"]], [["Resampled", "array"]], { axis: -1 }, "text");
+registerNode("signal/stft", "Short-Time Fourier Transform", [["Data", "array"]], [["Freqs", "array"], ["Times", "array"], ["Z", "matrix"]], { fs: 1.0, nperseg: 256, noverlap: 128, window: "hann" }, "text");
+registerNode("signal/bandpass_filter", "Bandpass Filter", [["Data", "array"]], [["Filtered", "array"]], { fs: 1.0, lowcut: 0.1, highcut: 0.5, order: 4, btype: "bandpass" }, "text");
+registerNode("signal/xcorr", "Cross Correlation", [["X", "array"], ["Y", "array"]], [["Corr", "array"], ["Lags", "array"]], { mode: "full" }, "text");
+
+// Control / Systems
+registerNode("control/transfer_function", "Transfer Function", [["Numerator", "array"], ["Denominator", "array"]], [["System", "object"]], {}, "text");
+registerNode("control/step_response", "Step Response", [["System", "object"]], [["t", "array"], ["y", "array"]], { T: "" }, "text");
+registerNode("control/bode_plot", "Bode Plot", [["System", "object"]], [["w", "array"], ["mag", "array"], ["phase", "array"]], {}, "text");
 
 // Visualization
 registerNode("viz/plot_hist", "Histogram", [["Data", "array"]], [], { bins: 10, title: "Histogram" }, "text");
@@ -495,6 +538,7 @@ const nodeCategories = [
             { type: "data/select_column", label: "选择列" },
             { type: "data/filter_rows", label: "条件筛选" },
             { type: "data/group_aggregate", label: "分组聚合" },
+            { type: "data/describe", label: "数据概览" },
             { type: "io/output", label: "输出节点" }
         ]
     },
@@ -508,6 +552,10 @@ const nodeCategories = [
             { type: "data/merge_dataframes", label: "合并数据" },
             { type: "data/time_features", label: "时间特征" },
             { type: "data/create_dummy", label: "虚拟变量" },
+            { type: "data/pivot_table", label: "透视表" },
+            { type: "data/conditional_column", label: "条件生成列" },
+            { type: "data/map_values", label: "值映射" },
+            { type: "data/explode_column", label: "列展开" },
             { type: "data/expression", label: "表达式计算" }
         ]
     },
@@ -536,7 +584,12 @@ const nodeCategories = [
             { type: "math/determinant", label: "行列式" },
             { type: "math/solve_linear", label: "解线性方程组 (Ax=b)" },
             { type: "math/eigen", label: "特征值与特征向量" },
-            { type: "math/fft", label: "快速傅里叶变换 (FFT)" }
+            { type: "math/fft", label: "快速傅里叶变换 (FFT)" },
+            { type: "math/linspace", label: "等距序列 (linspace)" },
+            { type: "math/lu_decompose", label: "LU 分解" },
+            { type: "math/qr", label: "QR 分解" },
+            { type: "math/svd", label: "奇异值分解 (SVD)" },
+            { type: "math/conv", label: "一维卷积" }
         ]
     },
     {
@@ -572,6 +625,9 @@ const nodeCategories = [
             { type: "class/naive_bayes", label: "朴素贝叶斯" },
             { type: "class/kmeans", label: "K-Means 聚类" },
             { type: "eval/pca", label: "主成分分析 (PCA)" },
+            { type: "model/ridge_regression", label: "岭回归" },
+            { type: "model/lasso_regression", label: "Lasso 回归" },
+            { type: "model/poly_features", label: "多项式特征" },
             { type: "model/bp_neural_network", label: "BP 神经网络" }
         ]
     },
@@ -606,8 +662,20 @@ const nodeCategories = [
             { type: "algo/root_finding", label: "方程求根" },
             { type: "algo/parameter_estimation", label: "参数估计" },
             { type: "algo/discretize", label: "连续离散化" },
-            { type: "algo/ode_solver", label: "常微分方程求解" },
-            { type: "signal/filter", label: "信号滤波" }
+            { type: "algo/ode_solver", label: "常微分方程求解" }
+        ]
+    },
+    {
+        name: "📡 信号与控制",
+        nodes: [
+            { type: "signal/filter", label: "信号滤波" },
+            { type: "signal/resample", label: "信号重采样" },
+            { type: "signal/stft", label: "短时傅里叶变换 (STFT)" },
+            { type: "signal/bandpass_filter", label: "带通滤波" },
+            { type: "signal/xcorr", label: "互相关" },
+            { type: "control/transfer_function", label: "传递函数" },
+            { type: "control/step_response", label: "阶跃响应" },
+            { type: "control/bode_plot", label: "波特图" }
         ]
     },
     {
@@ -618,7 +686,13 @@ const nodeCategories = [
             { type: "stat/ttest", label: "T检验" },
             { type: "stat/chisquare", label: "卡方检验" },
             { type: "stat/discriminant", label: "判别分析" },
-            { type: "metrics/mse", label: "均方误差 (MSE)" }
+            { type: "stat/autocorr", label: "自相关" },
+            { type: "stat/pacf", label: "偏自相关" },
+            { type: "metrics/mse", label: "均方误差 (MSE)" },
+            { type: "metrics/mae", label: "平均绝对误差 (MAE)" },
+            { type: "metrics/rmse", label: "均方根误差 (RMSE)" },
+            { type: "metrics/r2", label: "决定系数 (R²)" },
+            { type: "metrics/accuracy", label: "分类准确率" }
         ]
     },
     {
@@ -744,8 +818,15 @@ function instantiateLibraryNode(libraryEntry) {
             }
             
             canvas.graph.add(node);
-            
-            // Removed Name widget addition
+
+            // Ensure subgraph node has a name in properties and a visible Name widget
+            node.properties = node.properties || {};
+            node.properties.name = node.properties.name || libraryEntry.name || node.title || "subgraph";
+            if (node.addWidget && (!node.widgets || !node.widgets.find(w => w.name === "Name"))) {
+                (function(n){
+                    n.nameWidget = n.addWidget("text", "Name", n.properties.name, function(v){ n.properties.name = v; });
+                })(node);
+            }
         }
     } else if (nodeData.type === "custom/python_script") {
         // Create custom python node
@@ -768,12 +849,25 @@ function instantiateLibraryNode(libraryEntry) {
                         } else if (w.name === "Outputs (comma sep)") {
                             w.value = node.properties.outputs || "";
                         }
-                        // Removed Name widget update
+                        // Update Name widget if present
+                        if (w.name === "Name") {
+                            w.value = node.properties.name || libraryEntry.name || node.title || "";
+                        }
                     });
+                    // If Name widget wasn't present, add it
+                    if (node.addWidget && (!node.widgets || !node.widgets.find(w => w.name === "Name"))) {
+                        (function(n){
+                            n.nameWidget = n.addWidget("text", "Name", n.properties.name || libraryEntry.name || n.title || "", function(v){ n.properties.name = v; });
+                        })(node);
+                    }
                 }
             }
             
             canvas.graph.add(node);
+            // For generic manual nodes that carry a 'name' property but no widget, add Name widget
+            if (nodeData.properties && nodeData.properties.name && node.addWidget && (!node.widgets || !node.widgets.find(w => w.name === "Name"))) {
+                node.nameWidget = node.addWidget("text", "Name", node.properties.name, function(v){ node.properties.name = v; });
+            }
         }
     } else {
         // Generic node creation
@@ -830,8 +924,16 @@ function renderSidebar(filterText = "") {
                 node.pos = [100, 100];
                 // Use canvas.graph to ensure we add to the currently active graph (e.g. inside a subgraph)
                 canvas.graph.add(node);
-                
-                // Removed Name widget addition for Subgraph nodes
+                // If user added a subgraph node via sidebar, ensure it has a Name widget
+                if (node.type === "graph/subgraph") {
+                    node.properties = node.properties || {};
+                    node.properties.name = node.properties.name || node.title || "subgraph";
+                    if (node.addWidget && (!node.widgets || !node.widgets.find(w => w.name === "Name"))) {
+                        (function(n){
+                            n.nameWidget = n.addWidget("text", "Name", n.properties.name, function(v){ n.properties.name = v; });
+                        })(node);
+                    }
+                }
             };
             content.appendChild(btn);
         });
@@ -950,14 +1052,30 @@ function patchSubgraphNode() {
         const oldOnConfigure = Subgraph.prototype.onConfigure;
         Subgraph.prototype.onConfigure = function(o) {
             if (oldOnConfigure) oldOnConfigure.call(this, o);
-            // Removed Name widget check
+            // Ensure a name property exists and widget reflects it
+            try {
+                this.properties = this.properties || {};
+                if (!this.properties.name) this.properties.name = this.title || "subgraph";
+                if (this.widgets && this.widgets.find) {
+                    var w = this.widgets.find(x => x.name === "Name");
+                    if (w) w.value = this.properties.name;
+                }
+            } catch(e) { /* defensive */ }
         };
         
         // Also patch the constructor to add widget on creation (for newly created subgraphs)
         const oldSubgraphInit = Subgraph.prototype.onAdded;
         Subgraph.prototype.onAdded = function() {
             if (oldSubgraphInit) oldSubgraphInit.call(this);
-            // Removed Name widget check
+            // Add Name widget when a subgraph node is created
+            try {
+                this.properties = this.properties || {};
+                this.properties.name = this.properties.name || this.title || "subgraph";
+                if (this.addWidget && (!this.widgets || !this.widgets.find(w => w.name === "Name"))) {
+                    var n = this;
+                    n.nameWidget = n.addWidget("text", "Name", n.properties.name, function(v){ n.properties.name = v; });
+                }
+            } catch(e) { /* defensive */ }
         };
         return true;
     }
@@ -973,7 +1091,22 @@ if (!patchSubgraphNode()) {
 var oldGraphConfigure = LGraph.prototype.configure;
 LGraph.prototype.configure = function(data, keep_old) {
     var result = oldGraphConfigure.call(this, data, keep_old);
-    // Removed Name widget check for subgraphs
+    // After graph is loaded, ensure subgraph nodes have name widget
+    try {
+        if (this._nodes && this._nodes.length) {
+            this._nodes.forEach(function(n){
+                try {
+                    if (n.type === "graph/subgraph") {
+                        n.properties = n.properties || {};
+                        n.properties.name = n.properties.name || n.title || "subgraph";
+                        if (n.addWidget && (!n.widgets || !n.widgets.find(w => w.name === "Name"))) {
+                            n.nameWidget = n.addWidget("text", "Name", n.properties.name, function(v){ n.properties.name = v; });
+                        }
+                    }
+                } catch(e) {}
+            });
+        }
+    } catch(e) {}
     return result;
 };
 
