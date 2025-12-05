@@ -1502,6 +1502,104 @@ def generate_scope(graph_data: Dict[str, Any], initial_varmap: Dict[int, Any] = 
             add(f"    {name} = np.array([])")
         return name
 
+    def gen_load_excel_adv(node, inputs):
+        """Load Excel with multi-row headers and stitched column names."""
+        name = default_var_name(node)
+        props = node.get("properties", {}) or {}
+        path = props.get("path", "data.xlsx")
+        sheet = props.get("sheet", 0)
+        header_rows_raw = str(props.get("header_rows", "")).strip()
+        data_start_raw = str(props.get("data_start_row", "")).strip()
+        combine_mode = str(props.get("combine_mode", "code+name")).lower()
+        city_col = str(props.get("city_column", "city") or "city")
+        drop_empty = bool(props.get("drop_empty_cols", True))
+        output_format = str(props.get("output_format", "dataframe")).lower()
+        if output_format not in {"matrix", "dataframe", "records"}:
+            output_format = "dataframe"
+
+        header_rows: List[int] = []
+        for part in header_rows_raw.split(","):
+            part = part.strip()
+            if not part:
+                continue
+            try:
+                row_idx = int(float(part)) - 1  # user-friendly 1-based -> 0-based
+                if row_idx >= 0:
+                    header_rows.append(row_idx)
+            except Exception:
+                continue
+        header_rows = sorted(set(header_rows))
+
+        data_start_row = None
+        try:
+            ds = int(float(data_start_raw))
+            if ds >= 1:
+                data_start_row = ds - 1  # convert to 0-based
+        except Exception:
+            data_start_row = None
+
+        path_literal = json.dumps(path)
+        sheet_literal = json.dumps(sheet) if isinstance(sheet, str) else sheet
+        header_literal = f"[{', '.join(str(h) for h in header_rows)}]"
+        combine_literal = json.dumps(combine_mode)
+        city_literal = json.dumps(city_col)
+        start_literal = "None" if data_start_row is None else str(data_start_row)
+        add("# Advanced Excel loader (stitch multi-row headers)")
+        add("try:")
+        add(f"    _raw_{name} = pd.read_excel({path_literal}, sheet_name={sheet_literal}, header=None)")
+        add(f"    _header_rows_{name} = {header_literal}")
+        add(f"    _combine_mode_{name} = {combine_literal}")
+        add(f"    _header_values_{name} = [_raw_{name}.iloc[r] for r in _header_rows_{name} if r < len(_raw_{name})]")
+        add(f"    _ncols_{name} = _raw_{name}.shape[1] if hasattr(_raw_{name}, 'shape') else 0")
+        add(f"    _columns_{name} = []")
+        add(f"    for _c in range(_ncols_{name}):")
+        add(f"        _parts = []")
+        add(f"        for _hdr in _header_values_{name}:")
+        add(f"            if _c < len(_hdr):")
+        add(f"                _val = _hdr.iloc[_c]")
+        add(f"                if pd.notna(_val) and str(_val).strip():")
+        add(f"                    _parts.append(str(_val).strip())")
+        add(f"        _label = ''")
+        add(f"        if _combine_mode_{name} == 'code+name':")
+        add(f"            if len(_parts) >= 2:")
+        add(f"                _label = f\"{{_parts[0]}}_{{_parts[1]}}\"")
+        add(f"            elif _parts:")
+        add(f"                _label = _parts[0]")
+        add(f"        elif _combine_mode_{name} == 'name_only':")
+        add(f"            _label = _parts[1] if len(_parts) > 1 else (_parts[0] if _parts else '')")
+        add(f"        elif _combine_mode_{name} == 'code_only':")
+        add(f"            _label = _parts[0] if _parts else ''")
+        add(f"        else:  # first_nonempty")
+        add(f"            _label = _parts[0] if _parts else ''")
+        add(f"        if not _label:")
+        add(f"            _label = f\"col{{_c}}\"")
+        add(f"        _columns_{name}.append(_label)")
+        add(f"    _start_row_{name} = {start_literal}")
+        add(f"    if _start_row_{name} is None:")
+        add(f"        _start_row_{name} = max(_header_rows_{name}) + 1 if _header_rows_{name} else 0")
+        add(f"    _df_{name} = _raw_{name}.iloc[_start_row_{name}:].copy()")
+        add(f"    if len(_columns_{name}) == _df_{name}.shape[1]:")
+        add(f"        _df_{name}.columns = _columns_{name}")
+        add(f"    if {json.dumps(drop_empty)}:")
+        add(f"        _df_{name} = _df_{name}.loc[:, ~_df_{name}.isna().all()]")
+        add(f"    if {city_literal} and _df_{name}.shape[1] > 0:")
+        add(f"        _first_col = _df_{name}.columns[0]")
+        add(f"        _df_{name}.rename(columns={{_first_col: {city_literal}}}, inplace=True)")
+        if output_format == "matrix":
+            add(f"    {name} = _df_{name}.values")
+        elif output_format == "records":
+            add(f"    {name} = _df_{name}.to_dict(orient='records')")
+        else:
+            add(f"    {name} = _df_{name}")
+        add(f"except Exception:")
+        if output_format == "matrix":
+            add(f"    {name} = np.array([])")
+        elif output_format == "records":
+            add(f"    {name} = []")
+        else:
+            add(f"    {name} = pd.DataFrame()")
+        return name
+
     def gen_select_column(node, inputs):
         data = inputs[0][1] if len(inputs) > 0 else "np.array([])"
         name = default_var_name(node)
@@ -1680,6 +1778,109 @@ def generate_scope(graph_data: Dict[str, Any], initial_varmap: Dict[int, Any] = 
         add(f"    {name} = _df_{name}.describe(include={include_literal}, percentiles=_percentiles_{name})")
         add(f"except Exception:")
         add(f"    {name} = _df_{name}")
+        return name
+
+    def gen_weighted_score(node, inputs):
+        """Normalize indicators (pos/neg) and compute weighted score."""
+        data = inputs[0][1] if inputs else "pd.DataFrame()"
+        name = default_var_name(node)
+        props = node.get("properties", {}) or {}
+        spec_raw = str(props.get("indicators", "")).strip()
+        normalize = str(props.get("normalize", "minmax")).lower()
+        add_norm = bool(props.get("add_normalized_cols", True))
+        score_col = str(props.get("score_column", "score") or "score")
+        output_format = str(props.get("output_format", "dataframe")).lower()
+        if output_format not in {"matrix", "dataframe", "records"}:
+            output_format = "dataframe"
+
+        specs = []
+        for part in spec_raw.split(","):
+            part = part.strip()
+            if not part:
+                continue
+            tokens = [t.strip() for t in part.split(":")]
+            if len(tokens) < 2:
+                continue
+            col = tokens[0]
+            direction = "N" if tokens[1].upper().startswith("N") else "P"
+            try:
+                weight = float(tokens[2]) if len(tokens) > 2 else 1.0
+            except Exception:
+                weight = 1.0
+            specs.append({"col": col, "direction": direction, "weight": weight})
+
+        specs_literal = json.dumps(specs, ensure_ascii=False)
+        add("# Weighted normalization & scoring")
+        add(f"_df_{name} = {data} if isinstance({data}, pd.DataFrame) else pd.DataFrame({data})")
+        add(f"_specs_{name} = {specs_literal}")
+        add(f"_result_{name} = _df_{name}.copy()")
+        add(f"_result_{name}[{json.dumps(score_col)}] = 0.0")
+        add(f"for _spec in _specs_{name}:")
+        add(f"    _col = _spec.get('col')")
+        add(f"    if _col not in _result_{name}.columns:")
+        add(f"        continue")
+        add(f"    _series = pd.to_numeric(_result_{name}[_col], errors='coerce')")
+        if normalize == "zscore":
+            add(f"    _norm = (_series - _series.mean()) / (_series.std() + 1e-10)")
+        else:
+            add(f"    _norm = (_series - _series.min()) / ((_series.max() - _series.min()) + 1e-10)")
+        add(f"    if _spec.get('direction') == 'N':")
+        add(f"        _norm = 1 - _norm")
+        if add_norm:
+            add(f"    _result_{name}[f\"{{_col}}_norm\"] = _norm")
+        add(f"    _result_{name}[{json.dumps(score_col)}] = _result_{name}[{json.dumps(score_col)}] + _norm.fillna(0) * _spec.get('weight', 1.0)")
+        if output_format == "matrix":
+            add(f"{name} = _result_{name}.values")
+        elif output_format == "records":
+            add(f"{name} = _result_{name}.to_dict(orient='records')")
+        else:
+            add(f"{name} = _result_{name}")
+        return name
+
+    def gen_indicator_dict(node, inputs):
+        """Materialize an indicator dictionary for transparency."""
+        name = default_var_name(node)
+        props = node.get("properties", {}) or {}
+        spec_raw = str(props.get("indicators", "")).strip()
+        desc_raw = str(props.get("descriptions", "")).strip()
+
+        specs = []
+        for part in spec_raw.split(","):
+            part = part.strip()
+            if not part:
+                continue
+            tokens = [t.strip() for t in part.split(":")]
+            if len(tokens) < 2:
+                continue
+            col = tokens[0]
+            direction = "N" if tokens[1].upper().startswith("N") else "P"
+            try:
+                weight = float(tokens[2]) if len(tokens) > 2 else 1.0
+            except Exception:
+                weight = 1.0
+            specs.append({"col": col, "direction": direction, "weight": weight})
+
+        desc_map = {}
+        for part in desc_raw.split(";"):
+            if "=" not in part:
+                continue
+            k, v = part.split("=", 1)
+            k, v = k.strip(), v.strip()
+            if k:
+                desc_map[k] = v
+
+        rows = []
+        for spec in specs:
+            rows.append({
+                "indicator": spec["col"],
+                "direction": spec["direction"],
+                "weight": spec["weight"],
+                "description": desc_map.get(spec["col"], "")
+            })
+
+        rows_literal = json.dumps(rows, ensure_ascii=False)
+        add("# Indicator dictionary (for documentation)")
+        add(f"{name} = pd.DataFrame({rows_literal})")
         return name
 
     def gen_rolling_window(node, inputs):
@@ -2153,8 +2354,11 @@ def generate_scope(graph_data: Dict[str, Any], initial_varmap: Dict[int, Any] = 
         "data/split": gen_train_test_split,
         "data/load_csv": gen_load_csv,
         "data/load_excel": gen_load_excel,
+        "data/load_excel_adv": gen_load_excel_adv,
         "data/select_column": gen_select_column,
         "data/describe": gen_describe,
+        "data/weighted_score": gen_weighted_score,
+        "data/indicator_dict": gen_indicator_dict,
         "data/pivot_table": gen_pivot_table,
         "data/conditional_column": gen_conditional_column,
 

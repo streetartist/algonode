@@ -461,6 +461,7 @@ registerNode("data/normalize", "Data Normalization", [["Data", "array"]], [["Nor
 registerNode("data/split", "Train Test Split", [["X", "array"], ["y", "array"]], [["X_train", "array"], ["X_test", "array"], ["y_train", "array"], ["y_test", "array"]], { test_size: 0.2, random_state: 42 }, "text");
 registerNode("data/load_csv", "Load CSV", [], [["Data", "matrix"]], { path: "data.csv", header: 0, encoding: "utf-8", usecols: "", output_format: "matrix" }, "text");
 registerNode("data/load_excel", "Load Excel", [], [["Data", "matrix"]], { path: "data.xlsx", sheet: 0, usecols: "", output_format: "matrix" }, "text");
+registerNode("data/load_excel_adv", "Load Excel+", [], [["Data", "matrix"]], { path: "data.xlsx", sheet: 0, header_rows: "1,3", data_start_row: "5", combine_mode: "code+name", city_column: "city", drop_empty_cols: true, output_format: "dataframe" }, "text");
 registerNode("data/select_column", "Select Column", [["Data", "matrix"]], [["Column", "array"]], { selector: "0", mode: "index", as_array: true }, "text");
 registerNode("data/filter_rows", "Filter Rows", [["Data", "matrix"]], [["Filtered", "matrix"]], { condition: "Total > 0", reset_index: true, output_format: "dataframe" }, "text");
 registerNode("data/group_aggregate", "Group & Aggregate", [["Data", "matrix"]], [["Aggregated", "matrix"]], { group_by: "NOC", aggregations: "Gold:sum,Silver:sum", reset_index: true, flatten_columns: true, output_format: "dataframe" }, "text");
@@ -477,6 +478,8 @@ registerNode("data/create_dummy", "Create Dummy Variables", [["Data", "matrix"]]
 registerNode("data/map_values", "Map Values", [["Data", "matrix"]], [["Result", "matrix"]], { column: "Year", mapping_dict: "{\"2024\": 329}", default_value: "", output_column: "mapped" }, "text");
 registerNode("data/explode_column", "Explode Column", [["Data", "matrix"]], [["Result", "matrix"]], { column: "", output_column: "", ignore_index: true }, "text");
 registerNode("data/expression", "Expression", [["Data", "matrix"]], [["Result", "matrix"]], { expression: "(A + B) / 2", output_column: "result" }, "text");
+registerNode("data/weighted_score", "Weighted Normalize + Score", [["Data", "matrix"]], [["Scored", "matrix"]], { indicators: "X1:P:0.1,X2:N:0.1", normalize: "minmax", add_normalized_cols: true, score_column: "score", output_format: "dataframe" }, "text");
+registerNode("data/indicator_dict", "Indicator Dictionary", [], [["Dict", "matrix"]], { indicators: "X1:P:0.1,X2:N:0.1", descriptions: "X1=desc;X2=desc" }, "text");
 
 // Visualization
 registerNode("viz/plot_line", "Line Plot", [["X", "array"], ["Y", "array"]], [], { title: "Line Plot" }, "text");
@@ -535,10 +538,12 @@ const nodeCategories = [
             { type: "data/matrix", label: "矩阵" },
             { type: "data/load_csv", label: "读取 CSV" },
             { type: "data/load_excel", label: "读取 Excel" },
+            { type: "data/load_excel_adv", label: "高级 Excel 读取" },
             { type: "data/select_column", label: "选择列" },
             { type: "data/filter_rows", label: "条件筛选" },
             { type: "data/group_aggregate", label: "分组聚合" },
             { type: "data/describe", label: "数据概览" },
+            { type: "data/indicator_dict", label: "指标字典" },
             { type: "io/output", label: "输出节点" }
         ]
     },
@@ -556,7 +561,8 @@ const nodeCategories = [
             { type: "data/conditional_column", label: "条件生成列" },
             { type: "data/map_values", label: "值映射" },
             { type: "data/explode_column", label: "列展开" },
-            { type: "data/expression", label: "表达式计算" }
+            { type: "data/expression", label: "表达式计算" },
+            { type: "data/weighted_score", label: "指标加权归一化" }
         ]
     },
     {
