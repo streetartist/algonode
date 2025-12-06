@@ -43,6 +43,8 @@ AlgoNode 是一个基于 Flask 和 LiteGraph.js 构建的可视化节点编辑�
 | Graph Algo (Dijkstra/MST/MaxFlow) | 图论算法 (最短路/生成树/最大流) |
 | Combinatorial (TSP/VRP/Knapsack) | 组合优化 (旅行商/车辆路径/背包) |
 
+> 线性/整数规划节点现在支持等式约束、变量上下界、最大化/最小化切换；新增 “Constraint Builder” 节点，可将 `1,2<=10;1,-1=3` 样式的文本转成 A/b 矩阵直接送入规划求解器。
+
 #### 2. 评价与决策 (Evaluation)
 | 节点 | 说明 |
 |------|------|

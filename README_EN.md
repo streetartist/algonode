@@ -43,6 +43,8 @@ AlgoNode is a visual node-based editor for mathematical modeling and algorithm d
 | Graph Algo (Dijkstra/MST/MaxFlow) | Graph algorithms (Shortest Path/MST/MaxFlow) |
 | Combinatorial (TSP/VRP/Knapsack) | Combinatorial optimization (TSP/VRP/Knapsack) |
 
+> Linear/Integer Programming nodes now handle equality constraints, variable bounds, and min/max objectives. A new **Constraint Builder** node converts text like `1,2<=10;1,-1=3` into ready-to-use A/b matrices for the solvers.
+
 #### 2. Evaluation & Decision
 | Node | Description |
 |------|-------------|

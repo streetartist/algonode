@@ -293,9 +293,10 @@ registerNode("algo/interpolation", "Interpolation", [["X", "array"], ["Y", "arra
 registerNode("algo/parameter_estimation", "Parameter Estimation", [["X", "array"], ["Y", "array"]], [["Params", "array"]], {}, "text");
 
 // 3. Planning
-registerNode("algo/linear_programming", "Linear Programming", [["c", "array"], ["A_ub", "matrix"], ["b_ub", "array"]], [["Solution", "array"]], {}, "text");
-registerNode("algo/integer_programming", "Integer Programming", [["c", "array"], ["A_ub", "matrix"], ["b_ub", "array"]], [["Solution", "array"]], {}, "text");
+registerNode("algo/linear_programming", "Linear Programming", [["c", "array"], ["A_ub", "matrix"], ["b_ub", "array"], ["A_eq", "matrix"], ["b_eq", "array"], ["Bounds", "matrix"]], [["Solution", "array"], ["Objective", "number"], ["Status", "string"]], { sense: "min", bounds: "" }, "text");
+registerNode("algo/integer_programming", "Mixed Integer Programming", [["c", "array"], ["A_ub", "matrix"], ["b_ub", "array"], ["A_eq", "matrix"], ["b_eq", "array"], ["Bounds", "matrix"], ["Integrality", "array"]], [["Solution", "array"], ["Objective", "number"], ["Status", "string"]], { sense: "min", bounds: "", integrality: "" }, "text");
 registerNode("algo/quadratic_programming", "Quadratic Programming", [["Q", "matrix"], ["c", "array"]], [["Solution", "array"]], {}, "text");
+registerNode("opt/constraint_builder", "Constraint Builder", [], [["A_ub", "matrix"], ["b_ub", "array"], ["A_eq", "matrix"], ["b_eq", "array"]], { constraints: "1,2<=10;1,-1=3" }, "text");
 
 // 4. Graph Theory
 registerNode("algo/dijkstra", "Dijkstra (Shortest Path)", [["Graph", "matrix"]], [["Distances", "array"]], { start: 0 }, "text");
@@ -603,6 +604,7 @@ const nodeCategories = [
         nodes: [
             { type: "algo/linear_programming", label: "线性规划" },
             { type: "algo/integer_programming", label: "整数规划" },
+            { type: "opt/constraint_builder", label: "约束构造器" },
             { type: "algo/quadratic_programming", label: "二次规划" },
             { type: "algo/nonlinear_programming", label: "非线性规划 (NLP)" },
             { type: "algo/simulated_annealing", label: "模拟退火" },

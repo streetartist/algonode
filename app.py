@@ -304,15 +304,60 @@ def generate_scope(graph_data: Dict[str, Any], initial_varmap: Dict[int, Any] = 
         return name
 
     def gen_linprog(node, inputs):
-        c = inputs[0][1] if len(inputs) > 0 else "np.array([])"
-        A = inputs[1][1] if len(inputs) > 1 else "np.array([[]])"
-        b = inputs[2][1] if len(inputs) > 2 else "np.ones(1)"
+        # Support equality constraints, bounds and max objective (via sign flip)
+        c = inputs[0][1] if len(inputs) > 0 and inputs[0][1] is not None else "np.array([])"
+        A_ub = inputs[1][1] if len(inputs) > 1 and inputs[1][1] is not None else "None"
+        b_ub = inputs[2][1] if len(inputs) > 2 and inputs[2][1] is not None else "None"
+        A_eq = inputs[3][1] if len(inputs) > 3 and inputs[3][1] is not None else "None"
+        b_eq = inputs[4][1] if len(inputs) > 4 and inputs[4][1] is not None else "None"
+        bounds_in = inputs[5][1] if len(inputs) > 5 and inputs[5][1] is not None else None
+        sense = str(node.get("properties", {}).get("sense", "min")).lower()
+        bounds_prop = node.get("properties", {}).get("bounds", "")
+
+        # Parse bounds from property string "0,1;0,inf"
+        bounds_list = []
+        import re
+        for line in re.split(r"[;\\n]", bounds_prop):
+            parts = [p.strip() for p in line.split(",") if p.strip()]
+            if not parts:
+                continue
+            if len(parts) >= 2:
+                try:
+                    lb = float(parts[0]) if parts[0].lower() not in ["none", "inf", "+inf"] else None
+                except Exception:
+                    lb = None
+                try:
+                    ub = float(parts[1]) if parts[1].lower() not in ["none", "inf", "+inf"] else None
+                except Exception:
+                    ub = None
+                bounds_list.append((lb, ub))
+        bounds_literal = bounds_list if bounds_list else None
+
+        bounds_expr = bounds_in if bounds_in is not None else "None"
+
         name = default_var_name(node)
-        add(f"# Linear Programming")
-        add(f"# min c^T x  s.t. A_ub x <= b_ub")
-        add(f"res_{name} = scipy.optimize.linprog({c}, A_ub={A}, b_ub={b}) if {c}.size else None")
-        add(f"{name} = res_{name}.x if res_{name} and res_{name}.success else np.zeros_like({c})")
-        return name
+        add(f"# Linear Programming (eq/bounds/sense support)")
+        add(f"_c_{name} = np.asarray({c}, dtype=float).ravel()")
+        add(f"_Aub_{name} = np.asarray({A_ub}, dtype=float) if {A_ub} is not None else None")
+        add(f"_bub_{name} = np.asarray({b_ub}, dtype=float).ravel() if {b_ub} is not None else None")
+        add(f"_Aeq_{name} = np.asarray({A_eq}, dtype=float) if {A_eq} is not None else None")
+        add(f"_beq_{name} = np.asarray({b_eq}, dtype=float).ravel() if {b_eq} is not None else None")
+        add(f"_bounds_raw_{name} = {bounds_expr} if {bounds_expr} is not None else {bounds_literal!r}")
+        add(f"if isinstance(_bounds_raw_{name}, np.ndarray): _bounds_raw_{name} = _bounds_raw_{name}.tolist()")
+        add(f"_bounds_{name} = None")
+        add(f"if _bounds_raw_{name}:")
+        add(f"    _bounds_{name} = []")
+        add(f"    for _lb, _ub in _bounds_raw_{name}:")
+        add(f"        _lb_val = None if _lb in [None, -np.inf] else _lb")
+        add(f"        _ub_val = None if _ub in [None, np.inf] else _ub")
+        add(f"        _bounds_{name}.append((_lb_val, _ub_val))")
+        add(f"_sense_{name} = '{sense}'")
+        add(f"_c_use_{name} = _c_{name} if _sense_{name} != 'max' else -_c_{name}")
+        add(f"res_{name} = scipy.optimize.linprog(_c_use_{name}, A_ub=_Aub_{name}, b_ub=_bub_{name}, A_eq=_Aeq_{name}, b_eq=_beq_{name}, bounds=_bounds_{name}, method='highs') if _c_{name}.size else None")
+        add(f"{name}_x = res_{name}.x if res_{name} is not None and res_{name}.success else np.zeros_like(_c_{name})")
+        add(f"{name}_obj = float(_c_{name}.dot({name}_x)) if _c_{name}.size else 0.0")
+        add(f"{name}_status = res_{name}.message if res_{name} is not None else 'no result'")
+        return {0: f"{name}_x", 1: f"{name}_obj", 2: f"{name}_status"}
 
     def gen_dijkstra(node, inputs):
         G_mat = inputs[0][1] if len(inputs) > 0 else "np.zeros((0,0))"
@@ -404,18 +449,142 @@ def generate_scope(graph_data: Dict[str, Any], initial_varmap: Dict[int, Any] = 
         return name
 
     def gen_integer_programming(node, inputs):
-        c = inputs[0][1] if len(inputs) > 0 else "np.array([])"
-        A = inputs[1][1] if len(inputs) > 1 else "np.array([[]])"
-        b = inputs[2][1] if len(inputs) > 2 else "np.ones(1)"
+        # Mixed/Integer programming with bounds, equality and optional integrality vector
+        c = inputs[0][1] if len(inputs) > 0 and inputs[0][1] is not None else "np.array([])"
+        A_ub = inputs[1][1] if len(inputs) > 1 and inputs[1][1] is not None else "None"
+        b_ub = inputs[2][1] if len(inputs) > 2 and inputs[2][1] is not None else "None"
+        A_eq = inputs[3][1] if len(inputs) > 3 and inputs[3][1] is not None else "None"
+        b_eq = inputs[4][1] if len(inputs) > 4 and inputs[4][1] is not None else "None"
+        bounds_in = inputs[5][1] if len(inputs) > 5 and inputs[5][1] is not None else None
+        integrality_in = inputs[6][1] if len(inputs) > 6 and inputs[6][1] is not None else None
+        sense = str(node.get("properties", {}).get("sense", "min")).lower()
+        bounds_prop = node.get("properties", {}).get("bounds", "")
+        integrality_prop = node.get("properties", {}).get("integrality", "")
+
+        # Parse bounds from property string
+        import re
+        bounds_list = []
+        for line in re.split(r"[;\\n]", bounds_prop):
+            parts = [p.strip() for p in line.split(",") if p.strip()]
+            if not parts:
+                continue
+            if len(parts) >= 2:
+                try:
+                    lb = float(parts[0]) if parts[0].lower() not in ["none", "inf", "+inf"] else None
+                except Exception:
+                    lb = None
+                try:
+                    ub = float(parts[1]) if parts[1].lower() not in ["none", "inf", "+inf"] else None
+                except Exception:
+                    ub = None
+                bounds_list.append((lb, ub))
+        bounds_literal = bounds_list if bounds_list else None
+
+        # Parse integrality string "1,0,2" -> vector
+        integ_list = []
+        for part in re.split(r"[;,]", integrality_prop):
+            if part.strip():
+                try:
+                    integ_list.append(int(float(part.strip())))
+                except Exception:
+                    pass
+        integ_literal = integ_list if integ_list else []
+        bounds_expr = bounds_in if bounds_in is not None else "None"
+        integ_expr = integrality_in if integrality_in is not None else "None"
+
         name = default_var_name(node)
-        add(f"# Integer Programming (using scipy.optimize.milp)")
-        add(f"from scipy.optimize import milp, LinearConstraint, Bounds")
-        add(f"integrality_{name} = np.ones_like({c})  # All variables are integers")
-        add(f"constraints_{name} = LinearConstraint({A}, -np.inf, {b})")
-        add(f"bounds_{name} = Bounds(lb=0, ub=np.inf)")
-        add(f"res_{name} = milp({c}, integrality=integrality_{name}, constraints=constraints_{name}, bounds=bounds_{name}) if {c}.size else None")
-        add(f"{name} = res_{name}.x if res_{name} and res_{name}.success else np.zeros_like({c})")
-        return name
+        add(f"# Integer/Mixed-Integer Programming (SciPy milp with fallback)")
+        add(f"_c_{name} = np.asarray({c}, dtype=float).ravel()")
+        add(f"_Aub_{name} = np.asarray({A_ub}, dtype=float) if {A_ub} is not None else None")
+        add(f"_bub_{name} = np.asarray({b_ub}, dtype=float).ravel() if {b_ub} is not None else None")
+        add(f"_Aeq_{name} = np.asarray({A_eq}, dtype=float) if {A_eq} is not None else None")
+        add(f"_beq_{name} = np.asarray({b_eq}, dtype=float).ravel() if {b_eq} is not None else None")
+        add(f"_bounds_raw_{name} = {bounds_expr} if {bounds_expr} is not None else {bounds_literal!r}")
+        add(f"if isinstance(_bounds_raw_{name}, np.ndarray): _bounds_raw_{name} = _bounds_raw_{name}.tolist()")
+        add(f"_bounds_{name} = None")
+        add(f"if _bounds_raw_{name}:")
+        add(f"    _bounds_{name} = []")
+        add(f"    for _lb, _ub in _bounds_raw_{name}:")
+        add(f"        _lb_val = None if _lb in [None, -np.inf] else _lb")
+        add(f"        _ub_val = None if _ub in [None, np.inf] else _ub")
+        add(f"        _bounds_{name}.append((_lb_val, _ub_val))")
+        add(f"_integrality_{name} = np.asarray({integ_expr} if {integ_expr} is not None else {integ_literal!r}, dtype=int) if _c_{name}.size else np.array([], dtype=int)")
+        add(f"if _integrality_{name}.size == 0: _integrality_{name} = np.ones_like(_c_{name}, dtype=int)")
+        add(f"if _integrality_{name}.size and _integrality_{name}.size != _c_{name}.size:")
+        add(f"    _integrality_{name} = np.resize(_integrality_{name}, _c_{name}.size)")
+        add(f"_sense_{name} = '{sense}'")
+        add(f"_c_use_{name} = _c_{name} if _sense_{name} != 'max' else -_c_{name}")
+        add(f"_constraints_{name} = []")
+        add(f"if _Aub_{name} is not None and _bub_{name} is not None:")
+        add(f"    _constraints_{name}.append(scipy.optimize.LinearConstraint(_Aub_{name}, -np.inf, _bub_{name}))")
+        add(f"if _Aeq_{name} is not None and _beq_{name} is not None:")
+        add(f"    _constraints_{name}.append(scipy.optimize.LinearConstraint(_Aeq_{name}, _beq_{name}, _beq_{name}))")
+        add(f"_status_note_{name} = ''")
+        add(f"if hasattr(scipy.optimize, 'milp') and _c_{name}.size:")
+        add(f"    res_{name} = scipy.optimize.milp(_c_use_{name}, integrality=_integrality_{name}, bounds=_bounds_{name}, constraints=_constraints_{name})")
+        add(f"    _status_note_{name} = ''")
+        add(f"else:")
+        add(f"    res_{name} = scipy.optimize.linprog(_c_use_{name}, A_ub=_Aub_{name}, b_ub=_bub_{name}, A_eq=_Aeq_{name}, b_eq=_beq_{name}, bounds=_bounds_{name}, method='highs') if _c_{name}.size else None")
+        add(f"    _status_note_{name} = ' (relaxed linprog fallback)'")
+        add(f"if res_{name} is not None and res_{name}.success:")
+        add(f"    _x_{name} = res_{name}.x")
+        add(f"    if _integrality_{name}.size:")
+        add(f"        _x_{name} = np.array(_x_{name}, copy=True)")
+        add(f"        for _i, _itype in enumerate(_integrality_{name}):")
+        add(f"            if _i < len(_x_{name}) and _itype:")
+        add(f"                if _itype == 2:")
+        add(f"                    _x_{name}[_i] = 1 if _x_{name}[_i] >= 0.5 else 0")
+        add(f"                else:")
+        add(f"                    _x_{name}[_i] = np.round(_x_{name}[_i])")
+        add(f"else:")
+        add(f"    _x_{name} = np.zeros_like(_c_{name})")
+        add(f"{name}_obj = float(_c_{name}.dot(_x_{name})) if _c_{name}.size else 0.0")
+        add(f"{name}_status = (res_{name}.message if res_{name} is not None else 'no result') + _status_note_{name}")
+        return {0: f"_x_{name}", 1: f"{name}_obj", 2: f"{name}_status"}
+
+    def gen_constraint_builder(node, inputs):
+        raw = str(node.get("properties", {}).get("constraints", ""))
+        name = default_var_name(node)
+        import re
+        A_ub = []
+        b_ub = []
+        A_eq = []
+        b_eq = []
+        for line in re.split(r"[;\\n]", raw):
+            ln = line.strip()
+            if not ln:
+                continue
+            m = re.match(r"(.+?)(<=|>=|=)(.+)")
+            if not m:
+                continue
+            coeff_part, op, rhs_part = m.groups()
+            coeff_tokens = [tok for tok in re.split(r"[ ,]+", coeff_part.strip()) if tok]
+            try:
+                coeffs = [float(tok) for tok in coeff_tokens]
+                rhs_val = float(rhs_part.strip())
+            except Exception:
+                continue
+            if op == ">=":
+                coeffs = [-c for c in coeffs]
+                rhs_val = -rhs_val
+                A_ub.append(coeffs)
+                b_ub.append(rhs_val)
+            elif op == "<=":
+                A_ub.append(coeffs)
+                b_ub.append(rhs_val)
+            else:
+                A_eq.append(coeffs)
+                b_eq.append(rhs_val)
+        aub_var = f"{name}_A_ub"
+        bub_var = f"{name}_b_ub"
+        aeq_var = f"{name}_A_eq"
+        beq_var = f"{name}_b_eq"
+        add(f"# Constraint builder from text (<=, >=, =)")
+        add(f"{aub_var} = np.array({A_ub!r}, dtype=float) if {bool(A_ub)} else None")
+        add(f"{bub_var} = np.array({b_ub!r}, dtype=float) if {bool(b_ub)} else None")
+        add(f"{aeq_var} = np.array({A_eq!r}, dtype=float) if {bool(A_eq)} else None")
+        add(f"{beq_var} = np.array({b_eq!r}, dtype=float) if {bool(b_eq)} else None")
+        return {0: aub_var, 1: bub_var, 2: aeq_var, 3: beq_var}
 
     def gen_quadratic_programming(node, inputs):
         Q = inputs[0][1] if len(inputs) > 0 else "np.eye(2)"
@@ -2487,6 +2656,7 @@ def generate_scope(graph_data: Dict[str, Any], initial_varmap: Dict[int, Any] = 
         "class/naive_bayes": gen_naive_bayes,
 
         # Opt
+        "opt/constraint_builder": gen_constraint_builder,
         "opt/knapsack": gen_knapsack,
         "opt/tsp": gen_tsp,
         "opt/vrp": gen_vrp,
