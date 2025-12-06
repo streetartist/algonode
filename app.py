@@ -3045,6 +3045,520 @@ def generate_scope(graph_data: Dict[str, Any], initial_varmap: Dict[int, Any] = 
         # We just return the name of the input variable.
         return inputs[0][1] if inputs else "None"
 
+    # ========== NEW ADVANCED GENERATORS ==========
+
+    # --- Advanced Matrix Operations ---
+    def gen_cholesky(node, inputs):
+        A = inputs[0][1] if inputs else "np.eye(2)"
+        name = default_var_name(node)
+        add(f"# Cholesky Decomposition")
+        add(f"try:")
+        add(f"    {name} = np.linalg.cholesky({A})")
+        add(f"except np.linalg.LinAlgError:")
+        add(f"    {name} = np.full_like({A}, np.nan)")
+        return name
+
+    def gen_matrix_rank(node, inputs):
+        A = inputs[0][1] if inputs else "np.eye(2)"
+        name = default_var_name(node)
+        add(f"# Matrix Rank")
+        add(f"{name} = np.linalg.matrix_rank({A})")
+        return name
+
+    def gen_matrix_norm(node, inputs):
+        A = inputs[0][1] if inputs else "np.eye(2)"
+        name = default_var_name(node)
+        ord_prop = node.get("properties", {}).get("ord", "fro")
+        add(f"# Matrix Norm")
+        add(f"{name} = np.linalg.norm({A}, ord='{ord_prop}')")
+        return name
+
+    def gen_condition_number(node, inputs):
+        A = inputs[0][1] if inputs else "np.eye(2)"
+        name = default_var_name(node)
+        add(f"# Condition Number")
+        add(f"{name} = np.linalg.cond({A})")
+        return name
+
+    def gen_pinv(node, inputs):
+        A = inputs[0][1] if inputs else "np.eye(2)"
+        name = default_var_name(node)
+        add(f"# Pseudo-Inverse (Moore-Penrose)")
+        add(f"{name} = np.linalg.pinv({A})")
+        return name
+
+    def gen_null_space(node, inputs):
+        A = inputs[0][1] if inputs else "np.eye(2)"
+        name = default_var_name(node)
+        add(f"# Null Space")
+        add(f"_u, _s, _vh = np.linalg.svd({A})")
+        add(f"_tol = max({A}.shape) * np.max(_s) * np.finfo(float).eps")
+        add(f"_rank = np.sum(_s > _tol)")
+        add(f"{name} = _vh[_rank:].T.conj()")
+        return name
+
+    def gen_matrix_exp(node, inputs):
+        A = inputs[0][1] if inputs else "np.eye(2)"
+        name = default_var_name(node)
+        add(f"# Matrix Exponential")
+        add(f"{name} = scipy.linalg.expm({A})")
+        return name
+
+    def gen_schur(node, inputs):
+        A = inputs[0][1] if inputs else "np.eye(2)"
+        name = default_var_name(node)
+        add(f"# Schur Decomposition")
+        add(f"{name}_T, {name}_Z = scipy.linalg.schur({A})")
+        return {0: f"{name}_T", 1: f"{name}_Z"}
+
+    def gen_hessenberg(node, inputs):
+        A = inputs[0][1] if inputs else "np.eye(2)"
+        name = default_var_name(node)
+        add(f"# Hessenberg Form")
+        add(f"{name}_H, {name}_Q = scipy.linalg.hessenberg({A}, calc_q=True)")
+        return {0: f"{name}_H", 1: f"{name}_Q"}
+
+    # --- Symbolic Math (SymPy) ---
+    def gen_symbolic_simplify(node, inputs):
+        name = default_var_name(node)
+        expr = node.get("properties", {}).get("expression", "x**2 + 2*x + 1")
+        add(f"# Symbolic Simplify")
+        add(f"try:")
+        add(f"    import sympy as sp")
+        add(f"    {name} = str(sp.simplify(sp.sympify('{expr}')))")
+        add(f"except: {name} = 'Error'")
+        return name
+
+    def gen_symbolic_expand(node, inputs):
+        name = default_var_name(node)
+        expr = node.get("properties", {}).get("expression", "(x+1)**2")
+        add(f"# Symbolic Expand")
+        add(f"try:")
+        add(f"    import sympy as sp")
+        add(f"    {name} = str(sp.expand(sp.sympify('{expr}')))")
+        add(f"except: {name} = 'Error'")
+        return name
+
+    def gen_symbolic_factor(node, inputs):
+        name = default_var_name(node)
+        expr = node.get("properties", {}).get("expression", "x**2 - 1")
+        add(f"# Symbolic Factor")
+        add(f"try:")
+        add(f"    import sympy as sp")
+        add(f"    {name} = str(sp.factor(sp.sympify('{expr}')))")
+        add(f"except: {name} = 'Error'")
+        return name
+
+    def gen_symbolic_diff(node, inputs):
+        name = default_var_name(node)
+        props = node.get("properties", {})
+        expr = props.get("expression", "x**3 + 2*x")
+        var = props.get("variable", "x")
+        order = int(props.get("order", 1))
+        add(f"# Symbolic Derivative")
+        add(f"try:")
+        add(f"    import sympy as sp")
+        add(f"    _x = sp.Symbol('{var}')")
+        add(f"    {name} = str(sp.diff(sp.sympify('{expr}'), _x, {order}))")
+        add(f"except: {name} = 'Error'")
+        return name
+
+    def gen_symbolic_integrate(node, inputs):
+        name = default_var_name(node)
+        props = node.get("properties", {})
+        expr = props.get("expression", "x**2")
+        var = props.get("variable", "x")
+        definite = props.get("definite", False)
+        lower = props.get("lower", 0)
+        upper = props.get("upper", 1)
+        add(f"# Symbolic Integral")
+        add(f"try:")
+        add(f"    import sympy as sp")
+        add(f"    _x = sp.Symbol('{var}')")
+        if definite:
+            add(f"    {name} = str(sp.integrate(sp.sympify('{expr}'), (_x, {lower}, {upper})))")
+        else:
+            add(f"    {name} = str(sp.integrate(sp.sympify('{expr}'), _x))")
+        add(f"except: {name} = 'Error'")
+        return name
+
+    def gen_symbolic_solve_eq(node, inputs):
+        name = default_var_name(node)
+        props = node.get("properties", {})
+        equation = props.get("equation", "x**2 - 4 = 0")
+        var = props.get("variable", "x")
+        add(f"# Solve Equation")
+        add(f"try:")
+        add(f"    import sympy as sp")
+        add(f"    _x = sp.Symbol('{var}')")
+        add(f"    _eq = '{equation}'.replace('=', '-(')+')' if '=' in '{equation}' else '{equation}'")
+        add(f"    _sols = sp.solve(sp.sympify(_eq), _x)")
+        add(f"    {name} = np.array([complex(s) for s in _sols])")
+        add(f"except: {name} = np.array([])")
+        return name
+
+    def gen_symbolic_solve_system(node, inputs):
+        name = default_var_name(node)
+        props = node.get("properties", {})
+        equations = props.get("equations", "x + y = 10; 2*x - y = 5")
+        variables = props.get("variables", "x, y")
+        add(f"# Solve System of Equations")
+        add(f"try:")
+        add(f"    import sympy as sp")
+        add(f"    _vars = sp.symbols('{variables}')")
+        add(f"    _eqs = []")
+        add(f"    for _eq_str in '{equations}'.split(';'):")
+        add(f"        _eq_str = _eq_str.strip()")
+        add(f"        if '=' in _eq_str:")
+        add(f"            _lhs, _rhs = _eq_str.split('=')")
+        add(f"            _eqs.append(sp.Eq(sp.sympify(_lhs), sp.sympify(_rhs)))")
+        add(f"    {name} = sp.solve(_eqs, _vars)")
+        add(f"except: {name} = {{}}")
+        return name
+
+    def gen_symbolic_limit(node, inputs):
+        name = default_var_name(node)
+        props = node.get("properties", {})
+        expr = props.get("expression", "sin(x)/x")
+        var = props.get("variable", "x")
+        point = props.get("point", "0")
+        add(f"# Symbolic Limit")
+        add(f"try:")
+        add(f"    import sympy as sp")
+        add(f"    _x = sp.Symbol('{var}')")
+        add(f"    {name} = str(sp.limit(sp.sympify('{expr}'), _x, sp.sympify('{point}')))")
+        add(f"except: {name} = 'Error'")
+        return name
+
+    def gen_symbolic_series(node, inputs):
+        name = default_var_name(node)
+        props = node.get("properties", {})
+        expr = props.get("expression", "exp(x)")
+        var = props.get("variable", "x")
+        point = props.get("point", 0)
+        order = int(props.get("order", 5))
+        add(f"# Taylor Series")
+        add(f"try:")
+        add(f"    import sympy as sp")
+        add(f"    _x = sp.Symbol('{var}')")
+        add(f"    {name} = str(sp.series(sp.sympify('{expr}'), _x, {point}, {order}).removeO())")
+        add(f"except: {name} = 'Error'")
+        return name
+
+    def gen_symbolic_laplace(node, inputs):
+        name = default_var_name(node)
+        props = node.get("properties", {})
+        expr = props.get("expression", "exp(-a*t)")
+        t_var = props.get("t_var", "t")
+        s_var = props.get("s_var", "s")
+        add(f"# Laplace Transform")
+        add(f"try:")
+        add(f"    import sympy as sp")
+        add(f"    _t, _s = sp.symbols('{t_var} {s_var}')")
+        add(f"    {name} = str(sp.laplace_transform(sp.sympify('{expr}'), _t, _s, noconds=True))")
+        add(f"except: {name} = 'Error'")
+        return name
+
+    def gen_symbolic_inv_laplace(node, inputs):
+        name = default_var_name(node)
+        props = node.get("properties", {})
+        expr = props.get("expression", "1/(s+a)")
+        s_var = props.get("s_var", "s")
+        t_var = props.get("t_var", "t")
+        add(f"# Inverse Laplace Transform")
+        add(f"try:")
+        add(f"    import sympy as sp")
+        add(f"    _s, _t = sp.symbols('{s_var} {t_var}')")
+        add(f"    {name} = str(sp.inverse_laplace_transform(sp.sympify('{expr}'), _s, _t))")
+        add(f"except: {name} = 'Error'")
+        return name
+
+    # --- Advanced Optimization ---
+    def gen_assignment_problem(node, inputs):
+        cost = inputs[0][1] if inputs else "np.eye(3)"
+        name = default_var_name(node)
+        add(f"# Assignment Problem (Hungarian Algorithm)")
+        add(f"from scipy.optimize import linear_sum_assignment")
+        add(f"_row_ind, _col_ind = linear_sum_assignment({cost})")
+        add(f"{name}_assignment = np.array(list(zip(_row_ind, _col_ind)))")
+        add(f"{name}_cost = {cost}[_row_ind, _col_ind].sum()")
+        return {0: f"{name}_assignment", 1: f"{name}_cost"}
+
+    def gen_transportation(node, inputs):
+        costs = inputs[0][1] if len(inputs) > 0 else "np.ones((3,3))"
+        supply = inputs[1][1] if len(inputs) > 1 else "np.array([10,10,10])"
+        demand = inputs[2][1] if len(inputs) > 2 else "np.array([10,10,10])"
+        name = default_var_name(node)
+        add(f"# Transportation Problem")
+        add(f"_costs = np.asarray({costs})")
+        add(f"_supply = np.asarray({supply}).ravel()")
+        add(f"_demand = np.asarray({demand}).ravel()")
+        add(f"_m, _n = _costs.shape")
+        add(f"_c = _costs.ravel()")
+        add(f"_A_eq = []")
+        add(f"_b_eq = []")
+        add(f"for i in range(_m):")
+        add(f"    row = np.zeros(_m * _n)")
+        add(f"    row[i*_n:(i+1)*_n] = 1")
+        add(f"    _A_eq.append(row)")
+        add(f"    _b_eq.append(_supply[i])")
+        add(f"for j in range(_n):")
+        add(f"    row = np.zeros(_m * _n)")
+        add(f"    for i in range(_m):")
+        add(f"        row[i*_n + j] = 1")
+        add(f"    _A_eq.append(row)")
+        add(f"    _b_eq.append(_demand[j])")
+        add(f"_res = scipy.optimize.linprog(_c, A_eq=np.array(_A_eq), b_eq=np.array(_b_eq), bounds=(0, None), method='highs')")
+        add(f"{name}_flow = _res.x.reshape(_m, _n) if _res.success else np.zeros((_m, _n))")
+        add(f"{name}_cost = _res.fun if _res.success else 0")
+        return {0: f"{name}_flow", 1: f"{name}_cost"}
+
+    # --- Probability Distributions ---
+    def gen_normal_dist(node, inputs):
+        name = default_var_name(node)
+        props = node.get("properties", {})
+        mean = float(props.get("mean", 0))
+        std = float(props.get("std", 1))
+        n_samples = int(props.get("n_samples", 1000))
+        x_range = props.get("x_range", "-4,4")
+        add(f"# Normal Distribution")
+        add(f"{name}_samples = np.random.normal({mean}, {std}, {n_samples})")
+        add(f"_x_range = [float(x) for x in '{x_range}'.split(',')]")
+        add(f"_x = np.linspace(_x_range[0]*{std}+{mean}, _x_range[1]*{std}+{mean}, 100)")
+        add(f"{name}_pdf = scipy.stats.norm.pdf(_x, {mean}, {std})")
+        add(f"{name}_cdf = scipy.stats.norm.cdf(_x, {mean}, {std})")
+        return {0: f"{name}_samples", 1: f"{name}_pdf", 2: f"{name}_cdf"}
+
+    def gen_uniform_dist(node, inputs):
+        name = default_var_name(node)
+        props = node.get("properties", {})
+        low = float(props.get("low", 0))
+        high = float(props.get("high", 1))
+        n_samples = int(props.get("n_samples", 1000))
+        add(f"# Uniform Distribution")
+        add(f"{name} = np.random.uniform({low}, {high}, {n_samples})")
+        return name
+
+    def gen_exponential_dist(node, inputs):
+        name = default_var_name(node)
+        props = node.get("properties", {})
+        scale = float(props.get("scale", 1.0))
+        n_samples = int(props.get("n_samples", 1000))
+        add(f"# Exponential Distribution")
+        add(f"{name} = np.random.exponential({scale}, {n_samples})")
+        return name
+
+    def gen_poisson_dist(node, inputs):
+        name = default_var_name(node)
+        props = node.get("properties", {})
+        lam = float(props.get("lam", 5))
+        n_samples = int(props.get("n_samples", 1000))
+        add(f"# Poisson Distribution")
+        add(f"{name} = np.random.poisson({lam}, {n_samples})")
+        return name
+
+    def gen_binomial_dist(node, inputs):
+        name = default_var_name(node)
+        props = node.get("properties", {})
+        n = int(props.get("n", 10))
+        p = float(props.get("p", 0.5))
+        n_samples = int(props.get("n_samples", 1000))
+        add(f"# Binomial Distribution")
+        add(f"{name} = np.random.binomial({n}, {p}, {n_samples})")
+        return name
+
+    # --- Combinatorics ---
+    def gen_factorial(node, inputs):
+        name = default_var_name(node)
+        n = int(node.get("properties", {}).get("n", 5))
+        add(f"# Factorial")
+        add(f"import math")
+        add(f"{name} = math.factorial({n})")
+        return name
+
+    def gen_binomial_coeff(node, inputs):
+        name = default_var_name(node)
+        props = node.get("properties", {})
+        n = int(props.get("n", 10))
+        k = int(props.get("k", 3))
+        add(f"# Binomial Coefficient")
+        add(f"import math")
+        add(f"{name} = math.comb({n}, {k})")
+        return name
+
+    def gen_permutations(node, inputs):
+        elements = inputs[0][1] if inputs else "np.array([1,2,3])"
+        name = default_var_name(node)
+        r = node.get("properties", {}).get("r", 0)
+        add(f"# Permutations")
+        add(f"from itertools import permutations as _perms")
+        add(f"_elems = list(np.asarray({elements}).ravel())")
+        add(f"_r = {r} if {r} > 0 else len(_elems)")
+        add(f"_perms_list = list(_perms(_elems, _r))")
+        add(f"{name}_perms = np.array(_perms_list) if _perms_list else np.array([])")
+        add(f"{name}_count = len(_perms_list)")
+        return {0: f"{name}_perms", 1: f"{name}_count"}
+
+    def gen_combinations(node, inputs):
+        elements = inputs[0][1] if inputs else "np.array([1,2,3])"
+        name = default_var_name(node)
+        r = int(node.get("properties", {}).get("r", 2))
+        add(f"# Combinations")
+        add(f"from itertools import combinations as _combs")
+        add(f"_elems = list(np.asarray({elements}).ravel())")
+        add(f"_combs_list = list(_combs(_elems, {r}))")
+        add(f"{name}_combs = np.array(_combs_list) if _combs_list else np.array([])")
+        add(f"{name}_count = len(_combs_list)")
+        return {0: f"{name}_combs", 1: f"{name}_count"}
+
+    # --- Set Operations ---
+    def gen_set_union(node, inputs):
+        A = inputs[0][1] if len(inputs) > 0 else "np.array([])"
+        B = inputs[1][1] if len(inputs) > 1 else "np.array([])"
+        name = default_var_name(node)
+        add(f"# Set Union")
+        add(f"{name} = np.union1d({A}, {B})")
+        return name
+
+    def gen_set_intersection(node, inputs):
+        A = inputs[0][1] if len(inputs) > 0 else "np.array([])"
+        B = inputs[1][1] if len(inputs) > 1 else "np.array([])"
+        name = default_var_name(node)
+        add(f"# Set Intersection")
+        add(f"{name} = np.intersect1d({A}, {B})")
+        return name
+
+    def gen_set_difference(node, inputs):
+        A = inputs[0][1] if len(inputs) > 0 else "np.array([])"
+        B = inputs[1][1] if len(inputs) > 1 else "np.array([])"
+        name = default_var_name(node)
+        add(f"# Set Difference")
+        add(f"{name} = np.setdiff1d({A}, {B})")
+        return name
+
+    def gen_set_symmetric_diff(node, inputs):
+        A = inputs[0][1] if len(inputs) > 0 else "np.array([])"
+        B = inputs[1][1] if len(inputs) > 1 else "np.array([])"
+        name = default_var_name(node)
+        add(f"# Symmetric Difference")
+        add(f"{name} = np.setxor1d({A}, {B})")
+        return name
+
+    def gen_cartesian_product(node, inputs):
+        A = inputs[0][1] if len(inputs) > 0 else "np.array([])"
+        B = inputs[1][1] if len(inputs) > 1 else "np.array([])"
+        name = default_var_name(node)
+        add(f"# Cartesian Product")
+        add(f"from itertools import product as _prod")
+        add(f"{name} = np.array(list(_prod(np.asarray({A}).ravel(), np.asarray({B}).ravel())))")
+        return name
+
+    # --- Financial Mathematics ---
+    def gen_npv(node, inputs):
+        cash_flows = inputs[0][1] if inputs else "np.array([-100, 30, 40, 50, 60])"
+        name = default_var_name(node)
+        rate = float(node.get("properties", {}).get("rate", 0.1))
+        add(f"# Net Present Value")
+        add(f"_cf = np.asarray({cash_flows}).ravel()")
+        add(f"{name} = np.npv({rate}, _cf) if hasattr(np, 'npv') else sum(_cf[i] / (1 + {rate})**i for i in range(len(_cf)))")
+        return name
+
+    def gen_irr(node, inputs):
+        cash_flows = inputs[0][1] if inputs else "np.array([-100, 30, 40, 50, 60])"
+        name = default_var_name(node)
+        add(f"# Internal Rate of Return")
+        add(f"_cf = np.asarray({cash_flows}).ravel()")
+        add(f"try:")
+        add(f"    {name} = np.irr(_cf) if hasattr(np, 'irr') else scipy.optimize.brentq(lambda r: sum(_cf[i]/(1+r)**i for i in range(len(_cf))), -0.99, 10)")
+        add(f"except: {name} = np.nan")
+        return name
+
+    # --- Queueing Theory ---
+    def gen_mm1_queue(node, inputs):
+        name = default_var_name(node)
+        props = node.get("properties", {})
+        lam = float(props.get("arrival_rate", 5))
+        mu = float(props.get("service_rate", 8))
+        add(f"# M/M/1 Queue")
+        add(f"_lam, _mu = {lam}, {mu}")
+        add(f"_rho = _lam / _mu")
+        add(f"{name}_util = _rho")
+        add(f"{name}_Lq = _rho**2 / (1 - _rho) if _rho < 1 else float('inf')")
+        add(f"{name}_Wq = _lam / (_mu * (_mu - _lam)) if _rho < 1 else float('inf')")
+        add(f"{name}_L = _lam / (_mu - _lam) if _rho < 1 else float('inf')")
+        return {0: f"{name}_util", 1: f"{name}_Lq", 2: f"{name}_Wq", 3: f"{name}_L"}
+
+    # --- Advanced Visualization ---
+    def gen_contour_plot(node, inputs):
+        X = inputs[0][1] if len(inputs) > 0 else "None"
+        Y = inputs[1][1] if len(inputs) > 1 else "None"
+        Z = inputs[2][1] if len(inputs) > 2 else "None"
+        name = default_var_name(node)
+        props = node.get("properties", {})
+        levels = int(props.get("levels", 10))
+        title = props.get("title", "Contour Plot")
+        filled = props.get("filled", True)
+        add(f"# Contour Plot")
+        add(f"plt.figure()")
+        add(f"if {X} is not None and {Y} is not None and {Z} is not None:")
+        if filled:
+            add(f"    plt.contourf({X}, {Y}, {Z}, levels={levels}, cmap='viridis')")
+        else:
+            add(f"    plt.contour({X}, {Y}, {Z}, levels={levels})")
+        add(f"    plt.colorbar()")
+        add(f"plt.title('{title}')")
+        add(f"show_plot()")
+        return name
+
+    def gen_quiver_plot(node, inputs):
+        X = inputs[0][1] if len(inputs) > 0 else "None"
+        Y = inputs[1][1] if len(inputs) > 1 else "None"
+        U = inputs[2][1] if len(inputs) > 2 else "None"
+        V = inputs[3][1] if len(inputs) > 3 else "None"
+        name = default_var_name(node)
+        props = node.get("properties", {})
+        title = props.get("title", "Vector Field")
+        scale = float(props.get("scale", 1.0))
+        add(f"# Vector Field (Quiver) Plot")
+        add(f"plt.figure()")
+        add(f"if {X} is not None and {Y} is not None and {U} is not None and {V} is not None:")
+        add(f"    plt.quiver({X}, {Y}, {U}, {V}, scale={scale})")
+        add(f"plt.title('{title}')")
+        add(f"show_plot()")
+        return name
+
+    def gen_bar_plot(node, inputs):
+        X = inputs[0][1] if len(inputs) > 0 else "None"
+        heights = inputs[1][1] if len(inputs) > 1 else "None"
+        name = default_var_name(node)
+        props = node.get("properties", {})
+        title = props.get("title", "Bar Chart")
+        horizontal = props.get("horizontal", False)
+        add(f"# Bar Chart")
+        add(f"plt.figure()")
+        add(f"if {X} is not None and {heights} is not None:")
+        if horizontal:
+            add(f"    plt.barh({X}, {heights})")
+        else:
+            add(f"    plt.bar({X}, {heights})")
+        add(f"plt.title('{title}')")
+        add(f"show_plot()")
+        return name
+
+    def gen_pie_plot(node, inputs):
+        values = inputs[0][1] if len(inputs) > 0 else "None"
+        labels = inputs[1][1] if len(inputs) > 1 else "None"
+        name = default_var_name(node)
+        title = node.get("properties", {}).get("title", "Pie Chart")
+        add(f"# Pie Chart")
+        add(f"plt.figure()")
+        add(f"if {values} is not None:")
+        add(f"    _labels = {labels} if {labels} is not None else None")
+        add(f"    plt.pie({values}, labels=_labels, autopct='%1.1f%%')")
+        add(f"plt.title('{title}')")
+        add(f"show_plot()")
+        return name
+
     generators = {
         # Data Preprocessing
         "data/normalize": gen_normalize,
@@ -3200,6 +3714,67 @@ def generate_scope(graph_data: Dict[str, Any], initial_varmap: Dict[int, Any] = 
         "stat/discriminant": gen_discriminant,
         "stat/autocorr": gen_autocorr,
         "stat/pacf": gen_pacf,
+
+        # Advanced Matrix Operations
+        "math/cholesky": gen_cholesky,
+        "math/matrix_rank": gen_matrix_rank,
+        "math/matrix_norm": gen_matrix_norm,
+        "math/condition_number": gen_condition_number,
+        "math/pinv": gen_pinv,
+        "math/null_space": gen_null_space,
+        "math/matrix_exp": gen_matrix_exp,
+        "math/schur": gen_schur,
+        "math/hessenberg": gen_hessenberg,
+
+        # Symbolic Math
+        "symbolic/simplify": gen_symbolic_simplify,
+        "symbolic/expand": gen_symbolic_expand,
+        "symbolic/factor": gen_symbolic_factor,
+        "symbolic/diff": gen_symbolic_diff,
+        "symbolic/integrate": gen_symbolic_integrate,
+        "symbolic/solve_eq": gen_symbolic_solve_eq,
+        "symbolic/solve_system": gen_symbolic_solve_system,
+        "symbolic/limit": gen_symbolic_limit,
+        "symbolic/series": gen_symbolic_series,
+        "symbolic/laplace": gen_symbolic_laplace,
+        "symbolic/inv_laplace": gen_symbolic_inv_laplace,
+
+        # Advanced Optimization
+        "opt/assignment_problem": gen_assignment_problem,
+        "opt/transportation": gen_transportation,
+
+        # Probability Distributions
+        "prob/normal_dist": gen_normal_dist,
+        "prob/uniform_dist": gen_uniform_dist,
+        "prob/exponential_dist": gen_exponential_dist,
+        "prob/poisson_dist": gen_poisson_dist,
+        "prob/binomial_dist": gen_binomial_dist,
+
+        # Combinatorics
+        "comb/factorial": gen_factorial,
+        "comb/binomial": gen_binomial_coeff,
+        "comb/permutations": gen_permutations,
+        "comb/combinations": gen_combinations,
+
+        # Set Operations
+        "set/union": gen_set_union,
+        "set/intersection": gen_set_intersection,
+        "set/difference": gen_set_difference,
+        "set/symmetric_diff": gen_set_symmetric_diff,
+        "set/cartesian_product": gen_cartesian_product,
+
+        # Financial Mathematics
+        "finance/npv": gen_npv,
+        "finance/irr": gen_irr,
+
+        # Queueing Theory
+        "queue/mm1": gen_mm1_queue,
+
+        # Advanced Visualization
+        "viz/contour": gen_contour_plot,
+        "viz/quiver": gen_quiver_plot,
+        "viz/bar": gen_bar_plot,
+        "viz/pie": gen_pie_plot,
     }
 
     # Loop over nodes in topological order

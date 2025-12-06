@@ -524,10 +524,138 @@ registerNode("stat/pacf", "Partial Auto-corr", [["Series", "array"]], [["PACF", 
 
 // --- New Nodes (MATLAB/LINGO inspired) ---
 
-// Math
+// Math - Basic
 registerNode("math/solve_linear", "Solve Linear System (Ax=b)", [["A", "matrix"], ["b", "array"]], [["x", "array"]], {}, "text");
 registerNode("math/eigen", "Eigenvalues/Vectors", [["A", "matrix"]], [["Vals", "array"], ["Vecs", "matrix"]], {}, "text");
 registerNode("math/fft", "FFT", [["X", "array"]], [["Spectrum", "array"]], {}, "text");
+
+// Math - Advanced Matrix Operations (MATLAB-like)
+registerNode("math/cholesky", "Cholesky Decomposition", [["A", "matrix"]], [["L", "matrix"]], {}, "text");
+registerNode("math/matrix_rank", "Matrix Rank", [["A", "matrix"]], [["Rank", "number"]], {}, "text");
+registerNode("math/matrix_norm", "Matrix Norm", [["A", "matrix"]], [["Norm", "number"]], { ord: "fro" }, "text");
+registerNode("math/condition_number", "Condition Number", [["A", "matrix"]], [["Cond", "number"]], {}, "text");
+registerNode("math/pinv", "Pseudo-Inverse (pinv)", [["A", "matrix"]], [["A_pinv", "matrix"]], {}, "text");
+registerNode("math/null_space", "Null Space", [["A", "matrix"]], [["Null", "matrix"]], {}, "text");
+registerNode("math/matrix_exp", "Matrix Exponential", [["A", "matrix"]], [["ExpA", "matrix"]], {}, "text");
+registerNode("math/schur", "Schur Decomposition", [["A", "matrix"]], [["T", "matrix"], ["Z", "matrix"]], {}, "text");
+registerNode("math/hessenberg", "Hessenberg Form", [["A", "matrix"]], [["H", "matrix"], ["Q", "matrix"]], {}, "text");
+
+// Symbolic Math (SymPy-based)
+registerNode("symbolic/simplify", "Simplify Expression", [], [["Result", "string"]], { expression: "x**2 + 2*x + 1" }, "text");
+registerNode("symbolic/expand", "Expand Expression", [], [["Result", "string"]], { expression: "(x+1)**2" }, "text");
+registerNode("symbolic/factor", "Factor Expression", [], [["Result", "string"]], { expression: "x**2 - 1" }, "text");
+registerNode("symbolic/diff", "Symbolic Derivative", [], [["Result", "string"]], { expression: "x**3 + 2*x", variable: "x", order: 1 }, "text");
+registerNode("symbolic/integrate", "Symbolic Integral", [], [["Result", "string"]], { expression: "x**2", variable: "x", definite: false, lower: 0, upper: 1 }, "text");
+registerNode("symbolic/solve_eq", "Solve Equation", [], [["Solutions", "array"]], { equation: "x**2 - 4 = 0", variable: "x" }, "text");
+registerNode("symbolic/solve_system", "Solve System of Equations", [], [["Solutions", ""]], { equations: "x + y = 10; 2*x - y = 5", variables: "x, y" }, "text");
+registerNode("symbolic/limit", "Limit", [], [["Result", "string"]], { expression: "sin(x)/x", variable: "x", point: "0" }, "text");
+registerNode("symbolic/series", "Taylor Series", [], [["Result", "string"]], { expression: "exp(x)", variable: "x", point: 0, order: 5 }, "text");
+registerNode("symbolic/laplace", "Laplace Transform", [], [["Result", "string"]], { expression: "exp(-a*t)", t_var: "t", s_var: "s" }, "text");
+registerNode("symbolic/inv_laplace", "Inverse Laplace", [], [["Result", "string"]], { expression: "1/(s+a)", s_var: "s", t_var: "t" }, "text");
+
+// Advanced Optimization (LINGO-like)
+registerNode("opt/goal_programming", "Goal Programming", [["c", "array"], ["A", "matrix"], ["b", "array"], ["Goals", "array"]], [["Solution", "array"], ["Deviations", "array"]], { priorities: "1,1,1" }, "text");
+registerNode("opt/pareto_frontier", "Pareto Frontier", [["Objectives", "matrix"]], [["Pareto_Points", "matrix"], ["Pareto_Indices", "array"]], {}, "text");
+registerNode("opt/sensitivity_analysis", "Sensitivity Analysis", [["c", "array"], ["A_ub", "matrix"], ["b_ub", "array"]], [["Shadow_Prices", "array"], ["Reduced_Costs", "array"], ["Ranges", ""]], {}, "text");
+registerNode("opt/assignment_problem", "Assignment Problem", [["Cost_Matrix", "matrix"]], [["Assignment", "array"], ["Total_Cost", "number"]], {}, "text");
+registerNode("opt/transportation", "Transportation Problem", [["Costs", "matrix"], ["Supply", "array"], ["Demand", "array"]], [["Flow", "matrix"], ["Total_Cost", "number"]], {}, "text");
+registerNode("opt/network_flow", "Min Cost Network Flow", [["Graph", "matrix"], ["Costs", "matrix"], ["Supply", "array"]], [["Flow", "matrix"], ["Total_Cost", "number"]], {}, "text");
+registerNode("opt/bin_packing", "Bin Packing", [["Items", "array"]], [["Bins", "array"], ["Num_Bins", "number"]], { bin_capacity: 100 }, "text");
+registerNode("opt/job_scheduling", "Job Scheduling", [["Processing_Times", "array"], ["Due_Dates", "array"]], [["Schedule", "array"], ["Makespan", "number"]], { num_machines: 1 }, "text");
+
+// Differential Equations
+registerNode("ode/solve_ivp", "Solve ODE (IVP)", [["y0", "array"], ["t_span", "array"]], [["t", "array"], ["y", "matrix"]], { func: "[-0.5*y[0]]", method: "RK45" }, "text");
+registerNode("ode/solve_bvp", "Solve BVP", [["x_init", "array"], ["y_init", "matrix"]], [["x", "array"], ["y", "matrix"]], { func: "[y[1], -y[0]]", bc: "ya[0], yb[0]-1" }, "text");
+registerNode("pde/heat_equation", "Heat Equation 1D", [["u0", "array"], ["x", "array"]], [["u", "matrix"], ["t", "array"]], { alpha: 0.01, t_end: 1.0, dt: 0.01 }, "text");
+registerNode("pde/wave_equation", "Wave Equation 1D", [["u0", "array"], ["v0", "array"], ["x", "array"]], [["u", "matrix"], ["t", "array"]], { c: 1.0, t_end: 1.0, dt: 0.01 }, "text");
+registerNode("ode/phase_portrait", "Phase Portrait", [["x_range", "array"], ["y_range", "array"]], [["X", "matrix"], ["Y", "matrix"], ["U", "matrix"], ["V", "matrix"]], { dx_dt: "y", dy_dt: "-x - 0.5*y", n_points: 20 }, "text");
+
+// Advanced Statistics
+registerNode("stat/regression_diagnostics", "Regression Diagnostics", [["X", "matrix"], ["y", "array"]], [["Residuals", "array"], ["R2", "number"], ["Adj_R2", "number"], ["F_stat", "number"], ["P_value", "number"], ["VIF", "array"]], {}, "text");
+registerNode("stat/normality_test", "Normality Test", [["Data", "array"]], [["Statistic", "number"], ["P_value", "number"], ["Is_Normal", "number"]], { method: "shapiro", alpha: 0.05 }, "text");
+registerNode("stat/mann_whitney", "Mann-Whitney U Test", [["Group1", "array"], ["Group2", "array"]], [["U_stat", "number"], ["P_value", "number"]], {}, "text");
+registerNode("stat/kruskal_wallis", "Kruskal-Wallis Test", [["Groups", "matrix"]], [["H_stat", "number"], ["P_value", "number"]], {}, "text");
+registerNode("stat/wilcoxon", "Wilcoxon Signed-Rank", [["X", "array"], ["Y", "array"]], [["Statistic", "number"], ["P_value", "number"]], {}, "text");
+registerNode("stat/bootstrap", "Bootstrap Confidence Interval", [["Data", "array"]], [["Mean", "number"], ["CI_Lower", "number"], ["CI_Upper", "number"]], { n_bootstrap: 1000, confidence: 0.95, statistic: "mean" }, "text");
+registerNode("stat/kde", "Kernel Density Estimation", [["Data", "array"]], [["X", "array"], ["Density", "array"]], { bandwidth: "scott", n_points: 100 }, "text");
+registerNode("stat/quantile_regression", "Quantile Regression", [["X", "matrix"], ["y", "array"]], [["Coeffs", "array"]], { quantile: 0.5 }, "text");
+
+// Graph Theory - Advanced
+registerNode("graph/critical_path", "Critical Path Method", [["Durations", "array"], ["Dependencies", "matrix"]], [["Critical_Path", "array"], ["Project_Duration", "number"], ["Early_Start", "array"], ["Late_Start", "array"]], {}, "text");
+registerNode("graph/min_cost_flow", "Min Cost Max Flow", [["Capacity", "matrix"], ["Cost", "matrix"]], [["Flow", "matrix"], ["Total_Cost", "number"], ["Max_Flow", "number"]], { source: 0, sink: -1 }, "text");
+registerNode("graph/shortest_paths_all", "All Pairs Shortest Paths", [["Graph", "matrix"]], [["Distances", "matrix"], ["Predecessors", "matrix"]], {}, "text");
+registerNode("graph/strongly_connected", "Strongly Connected Components", [["Graph", "matrix"]], [["Components", "array"], ["Num_Components", "number"]], {}, "text");
+registerNode("graph/topological_sort", "Topological Sort", [["Graph", "matrix"]], [["Order", "array"]], {}, "text");
+registerNode("graph/bipartite_matching", "Bipartite Matching", [["Graph", "matrix"]], [["Matching", "array"], ["Cardinality", "number"]], {}, "text");
+registerNode("graph/centrality", "Node Centrality", [["Graph", "matrix"]], [["Degree", "array"], ["Betweenness", "array"], ["Closeness", "array"], ["Eigenvector", "array"]], {}, "text");
+registerNode("graph/community_detection", "Community Detection", [["Graph", "matrix"]], [["Communities", "array"], ["Modularity", "number"]], { method: "louvain" }, "text");
+
+// Control Systems - Advanced
+registerNode("control/state_space", "State Space Model", [["A", "matrix"], ["B", "matrix"], ["C", "matrix"], ["D", "matrix"]], [["System", "object"]], {}, "text");
+registerNode("control/pid_controller", "PID Controller", [["Setpoint", "array"], ["Measured", "array"]], [["Output", "array"]], { Kp: 1.0, Ki: 0.1, Kd: 0.05, dt: 0.01 }, "text");
+registerNode("control/pid_tuning", "PID Auto-Tuning", [["System", "object"]], [["Kp", "number"], ["Ki", "number"], ["Kd", "number"]], { method: "ziegler_nichols" }, "text");
+registerNode("control/root_locus", "Root Locus", [["System", "object"]], [["Gains", "array"], ["Roots", "matrix"]], { k_max: 10 }, "text");
+registerNode("control/nyquist", "Nyquist Plot Data", [["System", "object"]], [["Real", "array"], ["Imag", "array"]], {}, "text");
+registerNode("control/controllability", "Controllability Matrix", [["A", "matrix"], ["B", "matrix"]], [["Controllability", "matrix"], ["Rank", "number"], ["Is_Controllable", "number"]], {}, "text");
+registerNode("control/observability", "Observability Matrix", [["A", "matrix"], ["C", "matrix"]], [["Observability", "matrix"], ["Rank", "number"], ["Is_Observable", "number"]], {}, "text");
+registerNode("control/pole_placement", "Pole Placement", [["A", "matrix"], ["B", "matrix"], ["Poles", "array"]], [["K", "matrix"]], {}, "text");
+registerNode("control/lqr", "LQR Controller", [["A", "matrix"], ["B", "matrix"], ["Q", "matrix"], ["R", "matrix"]], [["K", "matrix"], ["S", "matrix"], ["E", "array"]], {}, "text");
+registerNode("control/kalman_filter", "Kalman Filter", [["A", "matrix"], ["B", "matrix"], ["C", "matrix"], ["Q", "matrix"], ["R", "matrix"]], [["K", "matrix"]], {}, "text");
+
+// Signal Processing - Advanced
+registerNode("signal/wavelet", "Wavelet Transform", [["Data", "array"]], [["Coeffs", "array"], ["Freqs", "array"]], { wavelet: "db4", level: 5 }, "text");
+registerNode("signal/spectrogram", "Spectrogram", [["Data", "array"]], [["Freqs", "array"], ["Times", "array"], ["Sxx", "matrix"]], { fs: 1.0, nperseg: 256 }, "text");
+registerNode("signal/hilbert", "Hilbert Transform", [["Data", "array"]], [["Analytic", "array"], ["Envelope", "array"], ["Phase", "array"]], {}, "text");
+registerNode("signal/periodogram", "Periodogram (PSD)", [["Data", "array"]], [["Freqs", "array"], ["Psd", "array"]], { fs: 1.0, method: "welch" }, "text");
+registerNode("signal/cepstrum", "Cepstrum", [["Data", "array"]], [["Cepstrum", "array"]], {}, "text");
+registerNode("signal/envelope_detection", "Envelope Detection", [["Data", "array"]], [["Envelope", "array"]], { method: "hilbert" }, "text");
+registerNode("signal/zero_crossing", "Zero Crossing Rate", [["Data", "array"]], [["Rate", "number"]], {}, "text");
+registerNode("signal/peak_detection", "Peak Detection", [["Data", "array"]], [["Peaks", "array"], ["Properties", ""]], { height: 0, distance: 1, prominence: 0 }, "text");
+
+// Visualization - Advanced
+registerNode("viz/contour", "Contour Plot", [["X", "matrix"], ["Y", "matrix"], ["Z", "matrix"]], [], { levels: 10, title: "Contour Plot", filled: true }, "text");
+registerNode("viz/quiver", "Vector Field (Quiver)", [["X", "matrix"], ["Y", "matrix"], ["U", "matrix"], ["V", "matrix"]], [], { title: "Vector Field", scale: 1.0 }, "text");
+registerNode("viz/streamplot", "Streamlines", [["X", "matrix"], ["Y", "matrix"], ["U", "matrix"], ["V", "matrix"]], [], { title: "Streamlines", density: 1.0 }, "text");
+registerNode("viz/polar", "Polar Plot", [["Theta", "array"], ["R", "array"]], [], { title: "Polar Plot" }, "text");
+registerNode("viz/bar", "Bar Chart", [["X", "array"], ["Heights", "array"]], [], { title: "Bar Chart", horizontal: false }, "text");
+registerNode("viz/pie", "Pie Chart", [["Values", "array"], ["Labels", "array"]], [], { title: "Pie Chart" }, "text");
+registerNode("viz/errorbar", "Error Bar Plot", [["X", "array"], ["Y", "array"], ["Yerr", "array"]], [], { title: "Error Bar Plot" }, "text");
+registerNode("viz/violin", "Violin Plot", [["Data", "matrix"]], [], { title: "Violin Plot" }, "text");
+registerNode("viz/correlation_matrix", "Correlation Matrix Plot", [["Data", "matrix"]], [], { title: "Correlation Matrix", annot: true }, "text");
+
+// Combinatorics & Set Operations
+registerNode("comb/permutations", "Permutations", [["Elements", "array"]], [["Perms", "matrix"], ["Count", "number"]], { r: 0 }, "text");
+registerNode("comb/combinations", "Combinations", [["Elements", "array"]], [["Combs", "matrix"], ["Count", "number"]], { r: 2 }, "text");
+registerNode("comb/factorial", "Factorial", [], [["Result", "number"]], { n: 5 }, "text");
+registerNode("comb/binomial", "Binomial Coefficient", [], [["Result", "number"]], { n: 10, k: 3 }, "text");
+registerNode("set/union", "Set Union", [["A", "array"], ["B", "array"]], [["Result", "array"]], {}, "text");
+registerNode("set/intersection", "Set Intersection", [["A", "array"], ["B", "array"]], [["Result", "array"]], {}, "text");
+registerNode("set/difference", "Set Difference", [["A", "array"], ["B", "array"]], [["Result", "array"]], {}, "text");
+registerNode("set/symmetric_diff", "Symmetric Difference", [["A", "array"], ["B", "array"]], [["Result", "array"]], {}, "text");
+registerNode("set/cartesian_product", "Cartesian Product", [["A", "array"], ["B", "array"]], [["Result", "matrix"]], {}, "text");
+
+// Probability Distributions
+registerNode("prob/normal_dist", "Normal Distribution", [], [["Samples", "array"], ["PDF", "array"], ["CDF", "array"]], { mean: 0, std: 1, n_samples: 1000, x_range: "-4,4" }, "text");
+registerNode("prob/uniform_dist", "Uniform Distribution", [], [["Samples", "array"]], { low: 0, high: 1, n_samples: 1000 }, "text");
+registerNode("prob/exponential_dist", "Exponential Distribution", [], [["Samples", "array"]], { scale: 1.0, n_samples: 1000 }, "text");
+registerNode("prob/poisson_dist", "Poisson Distribution", [], [["Samples", "array"]], { lam: 5, n_samples: 1000 }, "text");
+registerNode("prob/binomial_dist", "Binomial Distribution", [], [["Samples", "array"]], { n: 10, p: 0.5, n_samples: 1000 }, "text");
+registerNode("prob/chi2_dist", "Chi-Square Distribution", [], [["Samples", "array"]], { df: 2, n_samples: 1000 }, "text");
+registerNode("prob/t_dist", "Student's t Distribution", [], [["Samples", "array"]], { df: 10, n_samples: 1000 }, "text");
+registerNode("prob/f_dist", "F Distribution", [], [["Samples", "array"]], { dfn: 5, dfd: 10, n_samples: 1000 }, "text");
+
+// Financial Mathematics
+registerNode("finance/npv", "Net Present Value", [["Cash_Flows", "array"]], [["NPV", "number"]], { rate: 0.1 }, "text");
+registerNode("finance/irr", "Internal Rate of Return", [["Cash_Flows", "array"]], [["IRR", "number"]], {}, "text");
+registerNode("finance/payback", "Payback Period", [["Cash_Flows", "array"]], [["Payback", "number"]], {}, "text");
+registerNode("finance/black_scholes", "Black-Scholes Option", [], [["Call_Price", "number"], ["Put_Price", "number"], ["Delta", "number"], ["Gamma", "number"]], { S: 100, K: 100, T: 1, r: 0.05, sigma: 0.2 }, "text");
+registerNode("finance/portfolio_opt", "Portfolio Optimization", [["Returns", "matrix"]], [["Weights", "array"], ["Expected_Return", "number"], ["Risk", "number"]], { target_return: 0.1, risk_free_rate: 0.02 }, "text");
+registerNode("finance/var", "Value at Risk", [["Returns", "array"]], [["VaR", "number"], ["CVaR", "number"]], { confidence: 0.95, method: "historical" }, "text");
+
+// Queueing Theory
+registerNode("queue/mm1", "M/M/1 Queue", [], [["Utilization", "number"], ["Avg_Queue", "number"], ["Avg_Wait", "number"], ["Avg_System", "number"]], { arrival_rate: 5, service_rate: 8 }, "text");
+registerNode("queue/mmc", "M/M/c Queue", [], [["Utilization", "number"], ["Avg_Queue", "number"], ["Avg_Wait", "number"], ["P_wait", "number"]], { arrival_rate: 10, service_rate: 4, servers: 3 }, "text");
+registerNode("queue/simulation", "Queue Simulation", [], [["Avg_Wait", "number"], ["Avg_Queue", "number"], ["Utilization", "number"]], { arrival_rate: 5, service_rate: 8, simulation_time: 1000 }, "text");
 
 // Optimization
 registerNode("algo/nonlinear_programming", "Non-linear Programming", [["x0", "array"]], [["Solution", "array"], ["Objective", "number"], ["Status", "string"], ["Constraints", ""], ["Var Names", "array"]], { objective: "x[0]**2 + x[1]**2", method: "SLSQP", constraints: "x0 + x1 <= 1", bounds: "0,1;0,1", variables: "x0,x1", sense: "min" }, "text");
@@ -577,6 +705,22 @@ const nodeCategories = [
         ]
     },
     {
+        name: "🔢 符号计算",
+        nodes: [
+            { type: "symbolic/simplify", label: "化简表达式" },
+            { type: "symbolic/expand", label: "展开表达式" },
+            { type: "symbolic/factor", label: "因式分解" },
+            { type: "symbolic/diff", label: "符号求导" },
+            { type: "symbolic/integrate", label: "符号积分" },
+            { type: "symbolic/solve_eq", label: "解方程" },
+            { type: "symbolic/solve_system", label: "解方程组" },
+            { type: "symbolic/limit", label: "求极限" },
+            { type: "symbolic/series", label: "泰勒展开" },
+            { type: "symbolic/laplace", label: "拉普拉斯变换" },
+            { type: "symbolic/inv_laplace", label: "拉普拉斯逆变换" }
+        ]
+    },
+    {
         name: "🧹 数据预处理",
         nodes: [
             { type: "data/normalize", label: "数据归一化" },
@@ -602,7 +746,16 @@ const nodeCategories = [
             { type: "viz/plot_hist", label: "直方图" },
             { type: "viz/plot_box", label: "箱线图" },
             { type: "viz/plot_heatmap", label: "热力图" },
-            { type: "viz/plot_surface", label: "3D 曲面图" }
+            { type: "viz/plot_surface", label: "3D 曲面图" },
+            { type: "viz/contour", label: "等高线图" },
+            { type: "viz/quiver", label: "向量场图" },
+            { type: "viz/streamplot", label: "流线图" },
+            { type: "viz/polar", label: "极坐标图" },
+            { type: "viz/bar", label: "柱状图" },
+            { type: "viz/pie", label: "饼图" },
+            { type: "viz/errorbar", label: "误差棒图" },
+            { type: "viz/violin", label: "小提琴图" },
+            { type: "viz/correlation_matrix", label: "相关矩阵图" }
         ]
     },
     {
@@ -624,6 +777,15 @@ const nodeCategories = [
             { type: "math/lu_decompose", label: "LU 分解" },
             { type: "math/qr", label: "QR 分解" },
             { type: "math/svd", label: "奇异值分解 (SVD)" },
+            { type: "math/cholesky", label: "Cholesky 分解" },
+            { type: "math/schur", label: "Schur 分解" },
+            { type: "math/hessenberg", label: "Hessenberg 形式" },
+            { type: "math/matrix_rank", label: "矩阵秩" },
+            { type: "math/matrix_norm", label: "矩阵范数" },
+            { type: "math/condition_number", label: "条件数" },
+            { type: "math/pinv", label: "伪逆 (pinv)" },
+            { type: "math/null_space", label: "零空间" },
+            { type: "math/matrix_exp", label: "矩阵指数" },
             { type: "math/conv", label: "一维卷积" }
         ]
     },
@@ -641,9 +803,17 @@ const nodeCategories = [
             { type: "algo/nonlinear_programming", label: "非线性规划 (NLP)" },
             { type: "algo/simulated_annealing", label: "模拟退火" },
             { type: "algo/genetic_algorithm", label: "遗传算法" },
-            { type: "opt/knapsack", label: "背包问题 (贪心)" },
+            { type: "opt/knapsack", label: "背包问题" },
             { type: "opt/tsp", label: "旅行商问题 (TSP)" },
             { type: "opt/vrp", label: "车辆路径问题 (VRP)" },
+            { type: "opt/goal_programming", label: "目标规划" },
+            { type: "opt/pareto_frontier", label: "Pareto 前沿" },
+            { type: "opt/sensitivity_analysis", label: "灵敏度分析" },
+            { type: "opt/assignment_problem", label: "指派问题" },
+            { type: "opt/transportation", label: "运输问题" },
+            { type: "opt/network_flow", label: "最小费用流" },
+            { type: "opt/bin_packing", label: "装箱问题" },
+            { type: "opt/job_scheduling", label: "作业调度" },
             { type: "opt/solution_report", label: "求解报告" }
         ]
     },
@@ -652,7 +822,15 @@ const nodeCategories = [
         nodes: [
             { type: "algo/dijkstra", label: "最短路径 (Dijkstra)" },
             { type: "algo/mst", label: "最小生成树" },
-            { type: "algo/max_flow", label: "最大流" }
+            { type: "algo/max_flow", label: "最大流" },
+            { type: "graph/critical_path", label: "关键路径法 (CPM)" },
+            { type: "graph/min_cost_flow", label: "最小费用最大流" },
+            { type: "graph/shortest_paths_all", label: "全源最短路径" },
+            { type: "graph/strongly_connected", label: "强连通分量" },
+            { type: "graph/topological_sort", label: "拓扑排序" },
+            { type: "graph/bipartite_matching", label: "二分图匹配" },
+            { type: "graph/centrality", label: "节点中心性" },
+            { type: "graph/community_detection", label: "社区发现" }
         ]
     },
     {
@@ -703,20 +881,48 @@ const nodeCategories = [
             { type: "algo/root_finding", label: "方程求根" },
             { type: "algo/parameter_estimation", label: "参数估计" },
             { type: "algo/discretize", label: "连续离散化" },
-            { type: "algo/ode_solver", label: "常微分方程求解" }
+            { type: "algo/ode_solver", label: "常微分方程求解" },
+            { type: "ode/solve_ivp", label: "ODE 初值问题" },
+            { type: "ode/solve_bvp", label: "ODE 边值问题" },
+            { type: "pde/heat_equation", label: "热传导方程" },
+            { type: "pde/wave_equation", label: "波动方程" },
+            { type: "ode/phase_portrait", label: "相图" }
         ]
     },
     {
-        name: "📡 信号与控制",
+        name: "📡 信号处理",
         nodes: [
             { type: "signal/filter", label: "信号滤波" },
             { type: "signal/resample", label: "信号重采样" },
             { type: "signal/stft", label: "短时傅里叶变换 (STFT)" },
             { type: "signal/bandpass_filter", label: "带通滤波" },
             { type: "signal/xcorr", label: "互相关" },
+            { type: "signal/wavelet", label: "小波变换" },
+            { type: "signal/spectrogram", label: "频谱图" },
+            { type: "signal/hilbert", label: "希尔伯特变换" },
+            { type: "signal/periodogram", label: "功率谱密度" },
+            { type: "signal/cepstrum", label: "倒谱" },
+            { type: "signal/envelope_detection", label: "包络检测" },
+            { type: "signal/zero_crossing", label: "过零率" },
+            { type: "signal/peak_detection", label: "峰值检测" }
+        ]
+    },
+    {
+        name: "🎛️ 控制系统",
+        nodes: [
             { type: "control/transfer_function", label: "传递函数" },
+            { type: "control/state_space", label: "状态空间模型" },
             { type: "control/step_response", label: "阶跃响应" },
-            { type: "control/bode_plot", label: "波特图" }
+            { type: "control/bode_plot", label: "波特图" },
+            { type: "control/pid_controller", label: "PID 控制器" },
+            { type: "control/pid_tuning", label: "PID 自整定" },
+            { type: "control/root_locus", label: "根轨迹" },
+            { type: "control/nyquist", label: "奈奎斯特图" },
+            { type: "control/controllability", label: "能控性矩阵" },
+            { type: "control/observability", label: "能观性矩阵" },
+            { type: "control/pole_placement", label: "极点配置" },
+            { type: "control/lqr", label: "LQR 控制器" },
+            { type: "control/kalman_filter", label: "卡尔曼滤波" }
         ]
     },
     {
@@ -729,11 +935,65 @@ const nodeCategories = [
             { type: "stat/discriminant", label: "判别分析" },
             { type: "stat/autocorr", label: "自相关" },
             { type: "stat/pacf", label: "偏自相关" },
+            { type: "stat/regression_diagnostics", label: "回归诊断" },
+            { type: "stat/normality_test", label: "正态性检验" },
+            { type: "stat/mann_whitney", label: "Mann-Whitney U 检验" },
+            { type: "stat/kruskal_wallis", label: "Kruskal-Wallis 检验" },
+            { type: "stat/wilcoxon", label: "Wilcoxon 符号秩检验" },
+            { type: "stat/bootstrap", label: "Bootstrap 置信区间" },
+            { type: "stat/kde", label: "核密度估计" },
+            { type: "stat/quantile_regression", label: "分位数回归" },
             { type: "metrics/mse", label: "均方误差 (MSE)" },
             { type: "metrics/mae", label: "平均绝对误差 (MAE)" },
             { type: "metrics/rmse", label: "均方根误差 (RMSE)" },
             { type: "metrics/r2", label: "决定系数 (R²)" },
             { type: "metrics/accuracy", label: "分类准确率" }
+        ]
+    },
+    {
+        name: "🎲 概率分布",
+        nodes: [
+            { type: "prob/normal_dist", label: "正态分布" },
+            { type: "prob/uniform_dist", label: "均匀分布" },
+            { type: "prob/exponential_dist", label: "指数分布" },
+            { type: "prob/poisson_dist", label: "泊松分布" },
+            { type: "prob/binomial_dist", label: "二项分布" },
+            { type: "prob/chi2_dist", label: "卡方分布" },
+            { type: "prob/t_dist", label: "t 分布" },
+            { type: "prob/f_dist", label: "F 分布" }
+        ]
+    },
+    {
+        name: "🔢 组合数学",
+        nodes: [
+            { type: "comb/permutations", label: "排列" },
+            { type: "comb/combinations", label: "组合" },
+            { type: "comb/factorial", label: "阶乘" },
+            { type: "comb/binomial", label: "二项式系数" },
+            { type: "set/union", label: "集合并集" },
+            { type: "set/intersection", label: "集合交集" },
+            { type: "set/difference", label: "集合差集" },
+            { type: "set/symmetric_diff", label: "对称差集" },
+            { type: "set/cartesian_product", label: "笛卡尔积" }
+        ]
+    },
+    {
+        name: "💰 金融数学",
+        nodes: [
+            { type: "finance/npv", label: "净现值 (NPV)" },
+            { type: "finance/irr", label: "内部收益率 (IRR)" },
+            { type: "finance/payback", label: "回收期" },
+            { type: "finance/black_scholes", label: "Black-Scholes 期权" },
+            { type: "finance/portfolio_opt", label: "投资组合优化" },
+            { type: "finance/var", label: "风险价值 (VaR)" }
+        ]
+    },
+    {
+        name: "🚶 排队论",
+        nodes: [
+            { type: "queue/mm1", label: "M/M/1 排队" },
+            { type: "queue/mmc", label: "M/M/c 排队" },
+            { type: "queue/simulation", label: "排队仿真" }
         ]
     },
     {
