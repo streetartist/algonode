@@ -93,8 +93,28 @@ def sanitize_name(name: str) -> str:
 
 
 def default_var_name(node: Dict[str, Any]) -> str:
+    """
+    Generate a meaningful variable name for a node.
+
+    Priority:
+    1. Use node's custom title if provided
+    2. Use node's name property if available
+    3. Fall back to node type + id
+    """
+    # Check for custom title first
+    title = node.get("title", "")
+    props = node.get("properties", {}) or {}
+    name_prop = props.get("name", "")
+
+    # Use title if it's meaningful (not just the default type name)
     t = node.get("type", "node").split("/")[-1]
-    base = sanitize_name(node.get("title") or t)
+    if title and title != t and title.strip():
+        base = sanitize_name(title)
+    elif name_prop and name_prop.strip():
+        base = sanitize_name(name_prop)
+    else:
+        base = sanitize_name(t)
+
     return f"{base}_{node['id']}"
 
 
@@ -121,15 +141,51 @@ def resolve_input_vars(node: Dict[str, Any], g: Graph, varmap: Dict[int, Any]) -
     return result
 
 
-def generate_scope(graph_data: Dict[str, Any], initial_varmap: Dict[int, Any] = None) -> Tuple[List[str], Dict[int, Any]]:
+def generate_scope(graph_data: Dict[str, Any], initial_varmap: Dict[int, Any] = None, readable: bool = True) -> Tuple[List[str], Dict[int, Any]]:
+    """
+    Generate code for a graph scope.
+
+    Args:
+        graph_data: The graph structure
+        initial_varmap: Initial variable mapping (for subgraphs)
+        readable: If True, add comments and better formatting
+    """
     g = Graph(graph_data)
     order = g.topo_order()
 
     lines: List[str] = []
     varmap: Dict[int, Any] = initial_varmap.copy() if initial_varmap else {}
+    current_category = None  # Track current node category for section comments
 
     def add(line: str):
         lines.append(line)
+
+    def add_node_comment(node: Dict[str, Any]):
+        """Add a descriptive comment for a node if readable mode is enabled."""
+        if not readable:
+            return
+        ntype = node.get("type", "")
+        title = node.get("title", "")
+        desc = get_node_description(ntype)
+
+        # Use title if available, otherwise use description
+        if title and title != ntype.split("/")[-1]:
+            comment = f"# {desc}: {title}"
+        else:
+            comment = f"# {desc}"
+        add(comment)
+
+    def add_section_comment(ntype: str):
+        """Add section comment when category changes."""
+        nonlocal current_category
+        if not readable:
+            return
+        category = get_node_category(ntype)
+        if category != current_category:
+            current_category = category
+            if lines:  # Add blank line before new section
+                add("")
+            add(f"# --- {category} ---")
 
     # --- Helper Generators ---
 
@@ -339,14 +395,37 @@ def generate_scope(graph_data: Dict[str, Any], initial_varmap: Dict[int, Any] = 
         bounds_expr = bounds_in if bounds_in is not None else "None"
 
         name = default_var_name(node)
-        add(f"# Linear Programming (eq/bounds/sense/duals)")
+
+        # Step 1: Prepare input data
+        add(f"")
+        add(f"# Step 1: 准备输入数据 (Prepare input data)")
         add(f"_c_{name} = np.asarray({c}, dtype=float).ravel()")
-        add(f"_Aub_{name} = np.asarray({A_ub}, dtype=float) if {A_ub} is not None else None")
-        add(f"_bub_{name} = np.asarray({b_ub}, dtype=float).ravel() if {b_ub} is not None else None")
-        add(f"_Aeq_{name} = np.asarray({A_eq}, dtype=float) if {A_eq} is not None else None")
-        add(f"_beq_{name} = np.asarray({b_eq}, dtype=float).ravel() if {b_eq} is not None else None")
-        add(f"_bounds_raw_{name} = {bounds_expr} if {bounds_expr} is not None else {bounds_literal!r}")
-        add(f"if isinstance(_bounds_raw_{name}, np.ndarray): _bounds_raw_{name} = _bounds_raw_{name}.tolist()")
+        add(f"_Aub_{name} = (")
+        add(f"    np.asarray({A_ub}, dtype=float)")
+        add(f"    if {A_ub} is not None else None")
+        add(f")")
+        add(f"_bub_{name} = (")
+        add(f"    np.asarray({b_ub}, dtype=float).ravel()")
+        add(f"    if {b_ub} is not None else None")
+        add(f")")
+        add(f"_Aeq_{name} = (")
+        add(f"    np.asarray({A_eq}, dtype=float)")
+        add(f"    if {A_eq} is not None else None")
+        add(f")")
+        add(f"_beq_{name} = (")
+        add(f"    np.asarray({b_eq}, dtype=float).ravel()")
+        add(f"    if {b_eq} is not None else None")
+        add(f")")
+
+        # Step 2: Process bounds
+        add(f"")
+        add(f"# Step 2: 处理变量边界 (Process variable bounds)")
+        add(f"_bounds_raw_{name} = (")
+        add(f"    {bounds_expr} if {bounds_expr} is not None")
+        add(f"    else {bounds_literal!r}")
+        add(f")")
+        add(f"if isinstance(_bounds_raw_{name}, np.ndarray):")
+        add(f"    _bounds_raw_{name} = _bounds_raw_{name}.tolist()")
         add(f"_bounds_{name} = None")
         add(f"if _bounds_raw_{name}:")
         add(f"    _bounds_{name} = []")
@@ -354,28 +433,103 @@ def generate_scope(graph_data: Dict[str, Any], initial_varmap: Dict[int, Any] = 
         add(f"        _lb_val = None if _lb in [None, -np.inf] else _lb")
         add(f"        _ub_val = None if _ub in [None, np.inf] else _ub")
         add(f"        _bounds_{name}.append((_lb_val, _ub_val))")
+
+        # Step 3: Handle optimization sense
+        add(f"")
+        add(f"# Step 3: 设置优化方向 (Set optimization direction)")
         add(f"_sense_{name} = '{sense}'")
-        add(f"_c_use_{name} = _c_{name} if _sense_{name} != 'max' else -_c_{name}")
+        add(f"_c_use_{name} = (")
+        add(f"    _c_{name} if _sense_{name} != 'max'")
+        add(f"    else -_c_{name}  # 最大化问题转换为最小化")
+        add(f")")
+
+        # Step 4: Prepare labels
+        add(f"")
+        add(f"# Step 4: 准备标签 (Prepare labels)")
         add(f"_ub_labels_{name} = list({ub_labels_in}) if {ub_labels_in} is not None else []")
         add(f"_eq_labels_{name} = list({eq_labels_in}) if {eq_labels_in} is not None else []")
         add(f"_var_labels_{name} = list({var_labels_in}) if {var_labels_in} is not None else []")
-        add(f"res_{name} = scipy.optimize.linprog(_c_use_{name}, A_ub=_Aub_{name}, b_ub=_bub_{name}, A_eq=_Aeq_{name}, b_eq=_beq_{name}, bounds=_bounds_{name}, method='highs') if _c_{name}.size else None")
-        add(f"{name}_x = res_{name}.x if res_{name} is not None and res_{name}.success else np.zeros_like(_c_{name})")
-        add(f"{name}_obj = float(_c_{name}.dot({name}_x)) if _c_{name}.size else 0.0")
-        add(f"{name}_status = res_{name}.message if res_{name} is not None else 'no result'")
-        add(f"_dual_ub_vec_{name} = getattr(getattr(res_{name}, 'ineqlin', None), 'marginals', None) if res_{name} is not None else None")
-        add(f"_dual_eq_vec_{name} = getattr(getattr(res_{name}, 'eqlin', None), 'marginals', None) if res_{name} is not None else None")
-        add(f"_slack_ub_{name} = getattr(getattr(res_{name}, 'ineqlin', None), 'slack', None) if res_{name} is not None else None")
-        add(f"_reduced_{name} = getattr(res_{name}, 'reduced_cost', None) if res_{name} is not None else None")
+
+        # Step 5: Solve
+        add(f"")
+        add(f"# Step 5: 求解线性规划 (Solve linear programming)")
+        add(f"res_{name} = (")
+        add(f"    scipy.optimize.linprog(")
+        add(f"        _c_use_{name},")
+        add(f"        A_ub=_Aub_{name},")
+        add(f"        b_ub=_bub_{name},")
+        add(f"        A_eq=_Aeq_{name},")
+        add(f"        b_eq=_beq_{name},")
+        add(f"        bounds=_bounds_{name},")
+        add(f"        method='highs'")
+        add(f"    )")
+        add(f"    if _c_{name}.size else None")
+        add(f")")
+
+        # Step 6: Extract results
+        add(f"")
+        add(f"# Step 6: 提取结果 (Extract results)")
+        add(f"{name}_x = (")
+        add(f"    res_{name}.x")
+        add(f"    if res_{name} is not None and res_{name}.success")
+        add(f"    else np.zeros_like(_c_{name})")
+        add(f")")
+        add(f"{name}_obj = (")
+        add(f"    float(_c_{name}.dot({name}_x))")
+        add(f"    if _c_{name}.size else 0.0")
+        add(f")")
+        add(f"{name}_status = (")
+        add(f"    res_{name}.message")
+        add(f"    if res_{name} is not None else 'no result'")
+        add(f")")
+
+        # Step 7: Extract dual values
+        add(f"")
+        add(f"# Step 7: 提取对偶值 (Extract dual values)")
+        add(f"_dual_ub_vec_{name} = (")
+        add(f"    getattr(getattr(res_{name}, 'ineqlin', None), 'marginals', None)")
+        add(f"    if res_{name} is not None else None")
+        add(f")")
+        add(f"_dual_eq_vec_{name} = (")
+        add(f"    getattr(getattr(res_{name}, 'eqlin', None), 'marginals', None)")
+        add(f"    if res_{name} is not None else None")
+        add(f")")
+        add(f"_slack_ub_{name} = (")
+        add(f"    getattr(getattr(res_{name}, 'ineqlin', None), 'slack', None)")
+        add(f"    if res_{name} is not None else None")
+        add(f")")
+        add(f"_reduced_{name} = (")
+        add(f"    getattr(res_{name}, 'reduced_cost', None)")
+        add(f"    if res_{name} is not None else None")
+        add(f")")
+
+        # Step 8: Create named dictionaries
+        add(f"")
+        add(f"# Step 8: 创建命名字典 (Create named dictionaries)")
         add(f"{name}_dual_ub_named = None")
-        add(f"if isinstance(_dual_ub_vec_{name}, np.ndarray) and len(_ub_labels_{name}) == len(_dual_ub_vec_{name}):")
-        add(f"    {name}_dual_ub_named = dict(zip(_ub_labels_{name}, _dual_ub_vec_{name}.tolist()))")
+        add(f"if (isinstance(_dual_ub_vec_{name}, np.ndarray) and")
+        add(f"        len(_ub_labels_{name}) == len(_dual_ub_vec_{name})):")
+        add(f"    {name}_dual_ub_named = dict(zip(")
+        add(f"        _ub_labels_{name},")
+        add(f"        _dual_ub_vec_{name}.tolist()")
+        add(f"    ))")
+        add(f"")
         add(f"{name}_dual_eq_named = None")
-        add(f"if isinstance(_dual_eq_vec_{name}, np.ndarray) and len(_eq_labels_{name}) == len(_dual_eq_vec_{name}):")
-        add(f"    {name}_dual_eq_named = dict(zip(_eq_labels_{name}, _dual_eq_vec_{name}.tolist()))")
+        add(f"if (isinstance(_dual_eq_vec_{name}, np.ndarray) and")
+        add(f"        len(_eq_labels_{name}) == len(_dual_eq_vec_{name})):")
+        add(f"    {name}_dual_eq_named = dict(zip(")
+        add(f"        _eq_labels_{name},")
+        add(f"        _dual_eq_vec_{name}.tolist()")
+        add(f"    ))")
+        add(f"")
         add(f"{name}_reduced_named = None")
-        add(f"if isinstance(_reduced_{name}, np.ndarray) and len(_var_labels_{name}) == len(_reduced_{name}):")
-        add(f"    {name}_reduced_named = dict(zip(_var_labels_{name}, _reduced_{name}.tolist()))")
+        add(f"if (isinstance(_reduced_{name}, np.ndarray) and")
+        add(f"        len(_var_labels_{name}) == len(_reduced_{name})):")
+        add(f"    {name}_reduced_named = dict(zip(")
+        add(f"        _var_labels_{name},")
+        add(f"        _reduced_{name}.tolist()")
+        add(f"    ))")
+
         return {
             0: f"{name}_x",
             1: f"{name}_obj",
@@ -3783,91 +3937,425 @@ def generate_scope(graph_data: Dict[str, Any], initial_varmap: Dict[int, Any] = 
         ntype = node.get("type")
         inputs = resolve_input_vars(node, g, varmap)
         gen = generators.get(ntype)
+
+        # Add section comment when category changes
+        add_section_comment(ntype)
+
         if gen is None:
             vname = default_var_name(node)
             add(f"# Node type '{ntype}' not recognized; placeholder created")
             add(f"{vname} = None")
             varmap[nid] = vname
             continue
+
+        # Add descriptive comment for this node
+        add_node_comment(node)
+
         vname = gen(node, inputs)
         varmap[nid] = vname
 
     return lines, varmap
 
 
-def generate_code(graph_data: Dict[str, Any]) -> str:
-    imports = [
-        "import numpy as np",
-        "import pandas as pd",
-        "import scipy.optimize",
-        "import scipy.interpolate",
-        "import scipy.integrate",
-        "import scipy.linalg",
-        "import scipy.stats",
-        "import networkx as nx",
-        "from sklearn.neural_network import MLPRegressor, MLPClassifier",
-        "from sklearn.svm import SVR, SVC",
-        "from sklearn.cluster import KMeans",
-        "from sklearn.tree import DecisionTreeClassifier",
-        "from sklearn.ensemble import RandomForestClassifier",
-        "from sklearn.linear_model import LogisticRegression",
-        "from sklearn.linear_model import Ridge, Lasso",
-        "from sklearn.naive_bayes import GaussianNB",
-        "from sklearn.decomposition import PCA",
-        "from sklearn.discriminant_analysis import LinearDiscriminantAnalysis",
-        "from sklearn.preprocessing import PolynomialFeatures",
-        "import statsmodels.api as sm",
-        "import matplotlib.pyplot as plt",
-        "import matplotlib",
-        "# Configure Chinese font support",
-        "matplotlib.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'DejaVu Sans']",
-        "matplotlib.rcParams['axes.unicode_minus'] = False",
-        "from mpl_toolkits.mplot3d import Axes3D",
-        "import scipy.signal",
-        "import io",
-        "import base64",
-    ]
-    
-    preface = [
-        "# Generated by AlgoNode (LiteGraph + Flask)",
-        "# To run: pip install numpy scipy scikit-learn networkx statsmodels pandas matplotlib",
-        "",
-        "def show_plot():",
-        "    buf = io.BytesIO()",
-        "    plt.savefig(buf, format='png')",
-        "    buf.seek(0)",
-        "    img_base64 = base64.b64encode(buf.read()).decode('utf-8')",
-        "    print(f'<img src=\"data:image/png;base64,{img_base64}\" />')",
-        "    plt.close()",
-        "",
+def analyze_required_imports(graph_data: Dict[str, Any]) -> Dict[str, List[str]]:
+    """Analyze graph to determine which imports are actually needed."""
+    g = Graph(graph_data)
+    node_types = set()
+    for nid in g.nodes:
+        node = g.nodes[nid]
+        ntype = node.get("type", "")
+        node_types.add(ntype)
+
+    # Define import groups based on node types
+    import_groups = {
+        "numpy": {
+            "imports": ["import numpy as np"],
+            "triggers": ["math/", "data/vector", "data/matrix", "algo/", "signal/", "eval/"]
+        },
+        "pandas": {
+            "imports": ["import pandas as pd"],
+            "triggers": ["data/load_csv", "data/load_excel", "data/filter_rows", "data/group_aggregate",
+                        "data/pivot_table", "data/merge_dataframes", "data/describe", "data/select_column",
+                        "data/rolling_window", "data/transform_column", "data/time_features", "data/create_dummy",
+                        "data/map_values", "data/explode_column", "data/expression", "data/conditional_column"]
+        },
+        "scipy_optimize": {
+            "imports": ["import scipy.optimize"],
+            "triggers": ["algo/linear_programming", "algo/integer_programming", "algo/quadratic_programming",
+                        "algo/nonlinear_programming", "algo/parameter_estimation"]
+        },
+        "scipy_interpolate": {
+            "imports": ["import scipy.interpolate"],
+            "triggers": ["algo/interpolation"]
+        },
+        "scipy_integrate": {
+            "imports": ["import scipy.integrate"],
+            "triggers": ["algo/ode_solver", "algo/numerical_integration"]
+        },
+        "scipy_linalg": {
+            "imports": ["import scipy.linalg"],
+            "triggers": ["math/lu_decompose", "math/qr", "math/svd", "math/cholesky"]
+        },
+        "scipy_stats": {
+            "imports": ["import scipy.stats"],
+            "triggers": ["stat/ttest", "stat/chisquare", "stat/anova", "stat/correlation"]
+        },
+        "scipy_signal": {
+            "imports": ["import scipy.signal"],
+            "triggers": ["signal/filter", "signal/resample", "signal/stft", "signal/bandpass_filter",
+                        "signal/xcorr", "math/fft", "math/conv"]
+        },
+        "networkx": {
+            "imports": ["import networkx as nx"],
+            "triggers": ["algo/dijkstra", "algo/mst", "algo/max_flow"]
+        },
+        "sklearn_nn": {
+            "imports": ["from sklearn.neural_network import MLPRegressor, MLPClassifier"],
+            "triggers": ["model/mlp_regression", "class/mlp_classifier"]
+        },
+        "sklearn_svm": {
+            "imports": ["from sklearn.svm import SVR, SVC"],
+            "triggers": ["model/svr", "class/svc"]
+        },
+        "sklearn_cluster": {
+            "imports": ["from sklearn.cluster import KMeans"],
+            "triggers": ["class/kmeans"]
+        },
+        "sklearn_tree": {
+            "imports": ["from sklearn.tree import DecisionTreeClassifier"],
+            "triggers": ["class/decision_tree"]
+        },
+        "sklearn_ensemble": {
+            "imports": ["from sklearn.ensemble import RandomForestClassifier"],
+            "triggers": ["class/random_forest"]
+        },
+        "sklearn_linear": {
+            "imports": ["from sklearn.linear_model import LogisticRegression",
+                       "from sklearn.linear_model import Ridge, Lasso"],
+            "triggers": ["class/logistic_regression", "model/ridge_regression", "model/lasso_regression"]
+        },
+        "sklearn_naive_bayes": {
+            "imports": ["from sklearn.naive_bayes import GaussianNB"],
+            "triggers": ["class/naive_bayes"]
+        },
+        "sklearn_decomposition": {
+            "imports": ["from sklearn.decomposition import PCA"],
+            "triggers": ["eval/pca"]
+        },
+        "sklearn_discriminant": {
+            "imports": ["from sklearn.discriminant_analysis import LinearDiscriminantAnalysis"],
+            "triggers": ["eval/lda"]
+        },
+        "sklearn_preprocessing": {
+            "imports": ["from sklearn.preprocessing import PolynomialFeatures"],
+            "triggers": ["model/polynomial_regression"]
+        },
+        "statsmodels": {
+            "imports": ["import statsmodels.api as sm"],
+            "triggers": ["model/linear_regression_fit", "stat/"]
+        },
+        "matplotlib": {
+            "imports": [
+                "import matplotlib.pyplot as plt",
+                "import matplotlib",
+                "matplotlib.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'DejaVu Sans']",
+                "matplotlib.rcParams['axes.unicode_minus'] = False"
+            ],
+            "triggers": ["viz/"]
+        },
+        "matplotlib_3d": {
+            "imports": ["from mpl_toolkits.mplot3d import Axes3D"],
+            "triggers": ["viz/plot_surface"]
+        },
+        "io_base64": {
+            "imports": ["import io", "import base64"],
+            "triggers": ["viz/"]
+        },
+        "sympy": {
+            "imports": ["import sympy as sp", "from sympy import symbols, simplify, expand, factor, diff, integrate, solve, limit, series"],
+            "triggers": ["symbolic/"]
+        },
+        "control": {
+            "imports": ["import control"],
+            "triggers": ["control/"]
+        }
+    }
+
+    required_imports = []
+    for group_name, group_info in import_groups.items():
+        for trigger in group_info["triggers"]:
+            for ntype in node_types:
+                if ntype.startswith(trigger) or ntype == trigger.rstrip("/"):
+                    required_imports.extend(group_info["imports"])
+                    break
+            else:
+                continue
+            break
+
+    # Remove duplicates while preserving order
+    seen = set()
+    unique_imports = []
+    for imp in required_imports:
+        if imp not in seen:
+            seen.add(imp)
+            unique_imports.append(imp)
+
+    return unique_imports
+
+
+def get_node_category(ntype: str) -> str:
+    """Get human-readable category name for a node type."""
+    categories = {
+        "math/": "数学运算 (Mathematical Operations)",
+        "data/": "数据处理 (Data Processing)",
+        "algo/": "算法 (Algorithms)",
+        "viz/": "可视化 (Visualization)",
+        "model/": "模型训练 (Model Training)",
+        "class/": "分类算法 (Classification)",
+        "eval/": "评估方法 (Evaluation Methods)",
+        "stat/": "统计分析 (Statistical Analysis)",
+        "signal/": "信号处理 (Signal Processing)",
+        "symbolic/": "符号计算 (Symbolic Computation)",
+        "control/": "控制系统 (Control Systems)",
+        "io/": "输入输出 (Input/Output)",
+        "graph/": "子图 (Subgraph)",
+        "custom/": "自定义 (Custom)",
+        "queue/": "排队论 (Queueing Theory)"
+    }
+    for prefix, category in categories.items():
+        if ntype.startswith(prefix):
+            return category
+    return "其他 (Other)"
+
+
+def get_node_description(ntype: str) -> str:
+    """Get human-readable description for a node type."""
+    descriptions = {
+        # Math
+        "math/constant": "定义常量",
+        "math/add": "加法运算",
+        "math/subtract": "减法运算",
+        "math/multiply": "乘法运算",
+        "math/divide": "除法运算",
+        "math/power": "幂运算",
+        "math/matmul": "矩阵乘法",
+        "math/transpose": "矩阵转置",
+        "math/inverse": "矩阵求逆",
+        "math/determinant": "矩阵行列式",
+        "math/eigen": "特征值分解",
+        "math/lu_decompose": "LU分解",
+        "math/qr": "QR分解",
+        "math/svd": "奇异值分解",
+        "math/fft": "快速傅里叶变换",
+        "math/linspace": "等差数列生成",
+        "math/solve_linear": "求解线性方程组",
+        "math/conv": "卷积运算",
+        # Data
+        "data/vector": "定义向量",
+        "data/matrix": "定义矩阵",
+        "data/load_csv": "加载CSV文件",
+        "data/load_excel": "加载Excel文件",
+        "data/load_excel_adv": "加载Excel文件(高级)",
+        "data/normalize": "数据标准化",
+        "data/split": "数据集划分",
+        "data/filter_rows": "行过滤",
+        "data/group_aggregate": "分组聚合",
+        "data/pivot_table": "数据透视表",
+        "data/select_column": "选择列",
+        "data/describe": "数据描述统计",
+        "data/merge_dataframes": "合并数据框",
+        "data/rolling_window": "滑动窗口",
+        "data/transform_column": "列变换",
+        "data/time_features": "时间特征提取",
+        "data/create_dummy": "创建哑变量",
+        "data/map_values": "值映射",
+        "data/explode_column": "列展开",
+        "data/expression": "表达式计算",
+        "data/conditional_column": "条件列",
+        "data/weighted_score": "加权评分",
+        "data/indicator_dict": "指标字典",
+        # Algo
+        "algo/linear_programming": "线性规划",
+        "algo/integer_programming": "整数规划",
+        "algo/quadratic_programming": "二次规划",
+        "algo/nonlinear_programming": "非线性规划",
+        "algo/dijkstra": "Dijkstra最短路径",
+        "algo/mst": "最小生成树",
+        "algo/max_flow": "最大流",
+        "algo/monte_carlo": "蒙特卡洛模拟",
+        "algo/interpolation": "插值",
+        "algo/parameter_estimation": "参数估计",
+        "algo/ode_solver": "常微分方程求解",
+        "algo/simulated_annealing": "模拟退火",
+        "algo/genetic_algorithm": "遗传算法",
+        "algo/dynamic_programming": "动态规划",
+        "algo/backtracking": "回溯算法",
+        "algo/divide_conquer": "分治算法",
+        "algo/numerical_integration": "数值积分",
+        # Viz
+        "viz/plot_line": "折线图",
+        "viz/plot_scatter": "散点图",
+        "viz/plot_hist": "直方图",
+        "viz/plot_box": "箱线图",
+        "viz/plot_heatmap": "热力图",
+        "viz/plot_surface": "3D曲面图",
+        "viz/contour": "等高线图",
+        "viz/quiver": "向量场图",
+        "viz/bar": "柱状图",
+        "viz/pie": "饼图",
+        # Model
+        "model/linear_regression_fit": "线性回归",
+        "model/ridge_regression": "岭回归",
+        "model/lasso_regression": "Lasso回归",
+        "model/polynomial_regression": "多项式回归",
+        "model/mlp_regression": "MLP回归",
+        "model/svr": "支持向量回归",
+        # Class
+        "class/kmeans": "K-Means聚类",
+        "class/decision_tree": "决策树",
+        "class/logistic_regression": "逻辑回归",
+        "class/random_forest": "随机森林",
+        "class/naive_bayes": "朴素贝叶斯",
+        "class/svc": "支持向量分类",
+        "class/mlp_classifier": "MLP分类器",
+        # Eval
+        "eval/ahp": "层次分析法(AHP)",
+        "eval/topsis": "TOPSIS评价",
+        "eval/pca": "主成分分析(PCA)",
+        "eval/grey_relational": "灰色关联分析",
+        "eval/lda": "线性判别分析(LDA)",
+        # Stat
+        "stat/ttest": "t检验",
+        "stat/chisquare": "卡方检验",
+        "stat/anova": "方差分析",
+        "stat/correlation": "相关性分析",
+        # Signal
+        "signal/filter": "信号滤波",
+        "signal/resample": "信号重采样",
+        "signal/stft": "短时傅里叶变换",
+        "signal/bandpass_filter": "带通滤波",
+        "signal/xcorr": "互相关",
+        # Control
+        "control/transfer_function": "传递函数",
+        "control/step_response": "阶跃响应",
+        "control/bode_plot": "Bode图",
+        # IO
+        "io/output": "输出结果",
+        # Graph
+        "graph/subgraph": "子图调用",
+        "graph/input": "子图输入",
+        "graph/output": "子图输出",
+        # Custom
+        "custom/python_script": "自定义Python脚本",
+        # Queue
+        "queue/mm1": "M/M/1排队模型"
+    }
+    return descriptions.get(ntype, ntype.split("/")[-1])
+
+
+def generate_code(graph_data: Dict[str, Any], readable: bool = True) -> str:
+    """
+    Generate Python code from graph data.
+
+    Args:
+        graph_data: The graph structure containing nodes and links
+        readable: If True, generate more readable code with comments and sections
+    """
+    g = Graph(graph_data)
+
+    # Analyze required imports
+    required_imports = analyze_required_imports(graph_data)
+
+    # Always need numpy for basic operations
+    if "import numpy as np" not in required_imports:
+        required_imports.insert(0, "import numpy as np")
+
+    # Build header
+    header_lines = [
+        "# " + "=" * 70,
+        "# AlgoNode 生成的代码 (Generated by AlgoNode)",
+        "# " + "=" * 70,
+        "#",
+        "# 运行环境要求 (Requirements):",
+        "#   pip install numpy scipy scikit-learn networkx statsmodels pandas matplotlib",
+        "#",
+        "# " + "=" * 70,
+        ""
     ]
 
-    main_lines, main_varmap = generate_scope(graph_data)
-    
+    # Build imports section
+    import_lines = [
+        "# " + "-" * 40,
+        "# 导入依赖库 (Import Dependencies)",
+        "# " + "-" * 40,
+    ]
+    import_lines.extend(required_imports)
+    import_lines.append("")
+
+    # Check if visualization is needed
+    has_viz = any(node.get("type", "").startswith("viz/") for node in g.nodes.values())
+
+    # Build helper functions section
+    helper_lines = []
+    if has_viz:
+        helper_lines = [
+            "# " + "-" * 40,
+            "# 辅助函数 (Helper Functions)",
+            "# " + "-" * 40,
+            "",
+            "def show_plot():",
+            "    \"\"\"将图表转换为Base64编码的图片并输出\"\"\"",
+            "    buf = io.BytesIO()",
+            "    plt.savefig(buf, format='png', dpi=100, bbox_inches='tight')",
+            "    buf.seek(0)",
+            "    img_base64 = base64.b64encode(buf.read()).decode('utf-8')",
+            "    print(f'<img src=\"data:image/png;base64,{img_base64}\" />')",
+            "    plt.close()",
+            "",
+        ]
+
+    # Generate main code with sections
+    main_lines, main_varmap = generate_scope(graph_data, readable=readable)
+
     # Collect outputs from main scope
     output_vars = []
-    g = Graph(graph_data)
     for nid in g.topo_order():
         node = g.nodes[nid]
         if node.get("type") == "io/output":
-            # Find the variable name in varmap
-            # The generator for io/output returns the variable name
             val = main_varmap.get(nid)
             if val:
                 output_vars.append(val)
 
-    code_lines = []
-    code_lines.extend(preface)
-    code_lines.extend(imports)
-    code_lines.append("")
-    code_lines.extend(main_lines)
+    # Build main code section
+    code_section = [
+        "# " + "-" * 40,
+        "# 主程序 (Main Program)",
+        "# " + "-" * 40,
+        ""
+    ]
+    code_section.extend(main_lines)
 
+    # Build output section
+    output_lines = []
     if output_vars:
-        code_lines.append("")
+        output_lines = [
+            "",
+            "# " + "-" * 40,
+            "# 输出结果 (Output Results)",
+            "# " + "-" * 40,
+        ]
         for v in output_vars:
-            code_lines.append(f"print('{v} =', {v})")
+            output_lines.append(f"print('{v} =', {v})")
 
-    return "\n".join(code_lines)
+    # Combine all sections
+    all_lines = []
+    all_lines.extend(header_lines)
+    all_lines.extend(import_lines)
+    all_lines.extend(helper_lines)
+    all_lines.extend(code_section)
+    all_lines.extend(output_lines)
+
+    return "\n".join(all_lines)
 
 
 # -------------------------
