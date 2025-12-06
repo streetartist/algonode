@@ -293,10 +293,38 @@ registerNode("algo/interpolation", "Interpolation", [["X", "array"], ["Y", "arra
 registerNode("algo/parameter_estimation", "Parameter Estimation", [["X", "array"], ["Y", "array"]], [["Params", "array"]], {}, "text");
 
 // 3. Planning
-registerNode("algo/linear_programming", "Linear Programming", [["c", "array"], ["A_ub", "matrix"], ["b_ub", "array"], ["A_eq", "matrix"], ["b_eq", "array"], ["Bounds", "matrix"]], [["Solution", "array"], ["Objective", "number"], ["Status", "string"]], { sense: "min", bounds: "" }, "text");
-registerNode("algo/integer_programming", "Mixed Integer Programming", [["c", "array"], ["A_ub", "matrix"], ["b_ub", "array"], ["A_eq", "matrix"], ["b_eq", "array"], ["Bounds", "matrix"], ["Integrality", "array"]], [["Solution", "array"], ["Objective", "number"], ["Status", "string"]], { sense: "min", bounds: "", integrality: "" }, "text");
+registerNode("algo/linear_programming", "Linear Programming", [["c", "array"], ["A_ub", "matrix"], ["b_ub", "array"], ["A_eq", "matrix"], ["b_eq", "array"], ["Bounds", "matrix"], ["UB Labels", "array"], ["EQ Labels", "array"], ["Var Labels", "array"]], [["Solution", "array"], ["Objective", "number"], ["Status", "string"], ["Dual_ub", "array"], ["Dual_eq", "array"], ["ReducedCost", "array"], ["Slack_ub", "array"], ["Dual_ub Map", ""], ["Dual_eq Map", ""], ["Reduced Map", ""]], { sense: "min", bounds: "" }, "text");
+registerNode("algo/integer_programming", "Mixed Integer Programming", [["c", "array"], ["A_ub", "matrix"], ["b_ub", "array"], ["A_eq", "matrix"], ["b_eq", "array"], ["Bounds", "matrix"], ["Integrality", "array"], ["UB Labels", "array"], ["EQ Labels", "array"], ["Var Labels", "array"]], [["Solution", "array"], ["Objective", "number"], ["Status", "string"], ["Gap", "number"], ["ReducedCost", "array"], ["Reduced Map", ""], ["Dual_ub", "array"], ["Dual_eq", "array"], ["Dual_ub Map", ""], ["Dual_eq Map", ""]], { sense: "min", bounds: "", integrality: "" }, "text");
 registerNode("algo/quadratic_programming", "Quadratic Programming", [["Q", "matrix"], ["c", "array"]], [["Solution", "array"]], {}, "text");
-registerNode("opt/constraint_builder", "Constraint Builder", [], [["A_ub", "matrix"], ["b_ub", "array"], ["A_eq", "matrix"], ["b_eq", "array"]], { constraints: "1,2<=10;1,-1=3" }, "text");
+registerNode("opt/multiobjective_weighted", "Multi-Objective (Weighted Sum)", [["Objectives", "matrix"], ["Weights", "array"]], [["c", "array"]], {}, "text");
+registerNode("opt/constraint_builder", "Constraint Builder", [], [["A_ub", "matrix"], ["b_ub", "array"], ["A_eq", "matrix"], ["b_eq", "array"], ["UB Labels", "array"], ["EQ Labels", "array"]], { constraints: "c1:1,2<=10;c2:1,-1=3" }, "text");
+registerNode("opt/linear_model_builder", "Linear Model (Text)", [], [["c", "array"], ["A_ub", "matrix"], ["b_ub", "array"], ["A_eq", "matrix"], ["b_eq", "array"], ["Bounds", "matrix"], ["Integrality", "array"], ["UB Labels", "array"], ["EQ Labels", "array"], ["Var Labels", "array"]], { variables: "x1,x2", objective: "3x1 + 5x2", constraints: "c1:2x1 + x2 <= 100;c2:x1 - x2 >= 0;c3:x1 + x2 = 40", bounds: "0,inf;0,inf", integrality: "x1:int;x2:bin", sense: "min" }, "text");
+registerNode("opt/export_lp", "Export LP Text", [["c", "array"], ["A_ub", "matrix"], ["b_ub", "array"], ["A_eq", "matrix"], ["b_eq", "array"], ["Bounds", "matrix"], ["Integrality", "array"], ["Var Labels", "array"]], [["LP Text", "string"]], { name: "model" }, "text");
+function VariableBuilderNode() {
+    this.addOutput("c", "array");
+    this.addOutput("Bounds", "matrix");
+    this.addOutput("Integrality", "array");
+    this.addOutput("Labels", "array");
+    this.properties = { variables: "x1:1,0,10,2;x2:2,0,20,0" };
+    var self = this;
+    this.addWidget("text", "vars (cost,lb,ub,int)", this.properties.variables, function(v){ self.properties.variables = v; });
+}
+VariableBuilderNode.title = "Variable Builder";
+LiteGraph.registerNodeType("opt/variable_builder", VariableBuilderNode);
+
+// Solution report: pack solver outputs into a display-friendly object
+function SolutionReportNode() {
+    this.addInput("x", "");
+    this.addInput("obj", "");
+    this.addInput("status", "string");
+    this.addInput("dual_ub", "");
+    this.addInput("dual_eq", "");
+    this.addInput("reduced", "");
+    this.addOutput("Report", "");
+    this.addOutput("Text", "string");
+}
+SolutionReportNode.title = "Solution Report";
+LiteGraph.registerNodeType("opt/solution_report", SolutionReportNode);
 
 // 4. Graph Theory
 registerNode("algo/dijkstra", "Dijkstra (Shortest Path)", [["Graph", "matrix"]], [["Distances", "array"]], { start: 0 }, "text");
@@ -502,7 +530,7 @@ registerNode("math/eigen", "Eigenvalues/Vectors", [["A", "matrix"]], [["Vals", "
 registerNode("math/fft", "FFT", [["X", "array"]], [["Spectrum", "array"]], {}, "text");
 
 // Optimization
-registerNode("algo/nonlinear_programming", "Non-linear Programming", [["x0", "array"]], [["Solution", "array"]], { objective: "x[0]**2 + x[1]**2", method: "SLSQP" }, "text");
+registerNode("algo/nonlinear_programming", "Non-linear Programming", [["x0", "array"]], [["Solution", "array"], ["Objective", "number"], ["Status", "string"], ["Constraints", ""], ["Var Names", "array"]], { objective: "x[0]**2 + x[1]**2", method: "SLSQP", constraints: "x0 + x1 <= 1", bounds: "0,1;0,1", variables: "x0,x1", sense: "min" }, "text");
 
 // Statistics
 registerNode("stat/chisquare", "Chi-Square Test", [["Observed", "array"], ["Expected", "array"]], [["P-value", "number"]], {}, "text");
@@ -604,14 +632,19 @@ const nodeCategories = [
         nodes: [
             { type: "algo/linear_programming", label: "线性规划" },
             { type: "algo/integer_programming", label: "整数规划" },
+            { type: "opt/variable_builder", label: "变量定义" },
             { type: "opt/constraint_builder", label: "约束构造器" },
+            { type: "opt/linear_model_builder", label: "文本线性模型" },
+            { type: "opt/multiobjective_weighted", label: "多目标加权" },
+            { type: "opt/export_lp", label: "导出LP文本" },
             { type: "algo/quadratic_programming", label: "二次规划" },
             { type: "algo/nonlinear_programming", label: "非线性规划 (NLP)" },
             { type: "algo/simulated_annealing", label: "模拟退火" },
             { type: "algo/genetic_algorithm", label: "遗传算法" },
             { type: "opt/knapsack", label: "背包问题 (贪心)" },
             { type: "opt/tsp", label: "旅行商问题 (TSP)" },
-            { type: "opt/vrp", label: "车辆路径问题 (VRP)" }
+            { type: "opt/vrp", label: "车辆路径问题 (VRP)" },
+            { type: "opt/solution_report", label: "求解报告" }
         ]
     },
     {

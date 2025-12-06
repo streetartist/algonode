@@ -304,20 +304,23 @@ def generate_scope(graph_data: Dict[str, Any], initial_varmap: Dict[int, Any] = 
         return name
 
     def gen_linprog(node, inputs):
-        # Support equality constraints, bounds and max objective (via sign flip)
+        # Support equality constraints, bounds, labels, duals and max objective (via sign flip)
         c = inputs[0][1] if len(inputs) > 0 and inputs[0][1] is not None else "np.array([])"
         A_ub = inputs[1][1] if len(inputs) > 1 and inputs[1][1] is not None else "None"
         b_ub = inputs[2][1] if len(inputs) > 2 and inputs[2][1] is not None else "None"
         A_eq = inputs[3][1] if len(inputs) > 3 and inputs[3][1] is not None else "None"
         b_eq = inputs[4][1] if len(inputs) > 4 and inputs[4][1] is not None else "None"
         bounds_in = inputs[5][1] if len(inputs) > 5 and inputs[5][1] is not None else None
+        ub_labels_in = inputs[6][1] if len(inputs) > 6 and inputs[6][1] is not None else None
+        eq_labels_in = inputs[7][1] if len(inputs) > 7 and inputs[7][1] is not None else None
+        var_labels_in = inputs[8][1] if len(inputs) > 8 and inputs[8][1] is not None else None
         sense = str(node.get("properties", {}).get("sense", "min")).lower()
         bounds_prop = node.get("properties", {}).get("bounds", "")
 
         # Parse bounds from property string "0,1;0,inf"
         bounds_list = []
         import re
-        for line in re.split(r"[;\\n]", bounds_prop):
+        for line in re.split(r"[;\n]", bounds_prop):
             parts = [p.strip() for p in line.split(",") if p.strip()]
             if not parts:
                 continue
@@ -336,7 +339,7 @@ def generate_scope(graph_data: Dict[str, Any], initial_varmap: Dict[int, Any] = 
         bounds_expr = bounds_in if bounds_in is not None else "None"
 
         name = default_var_name(node)
-        add(f"# Linear Programming (eq/bounds/sense support)")
+        add(f"# Linear Programming (eq/bounds/sense/duals)")
         add(f"_c_{name} = np.asarray({c}, dtype=float).ravel()")
         add(f"_Aub_{name} = np.asarray({A_ub}, dtype=float) if {A_ub} is not None else None")
         add(f"_bub_{name} = np.asarray({b_ub}, dtype=float).ravel() if {b_ub} is not None else None")
@@ -353,12 +356,38 @@ def generate_scope(graph_data: Dict[str, Any], initial_varmap: Dict[int, Any] = 
         add(f"        _bounds_{name}.append((_lb_val, _ub_val))")
         add(f"_sense_{name} = '{sense}'")
         add(f"_c_use_{name} = _c_{name} if _sense_{name} != 'max' else -_c_{name}")
+        add(f"_ub_labels_{name} = list({ub_labels_in}) if {ub_labels_in} is not None else []")
+        add(f"_eq_labels_{name} = list({eq_labels_in}) if {eq_labels_in} is not None else []")
+        add(f"_var_labels_{name} = list({var_labels_in}) if {var_labels_in} is not None else []")
         add(f"res_{name} = scipy.optimize.linprog(_c_use_{name}, A_ub=_Aub_{name}, b_ub=_bub_{name}, A_eq=_Aeq_{name}, b_eq=_beq_{name}, bounds=_bounds_{name}, method='highs') if _c_{name}.size else None")
         add(f"{name}_x = res_{name}.x if res_{name} is not None and res_{name}.success else np.zeros_like(_c_{name})")
         add(f"{name}_obj = float(_c_{name}.dot({name}_x)) if _c_{name}.size else 0.0")
         add(f"{name}_status = res_{name}.message if res_{name} is not None else 'no result'")
-        return {0: f"{name}_x", 1: f"{name}_obj", 2: f"{name}_status"}
-
+        add(f"_dual_ub_vec_{name} = getattr(getattr(res_{name}, 'ineqlin', None), 'marginals', None) if res_{name} is not None else None")
+        add(f"_dual_eq_vec_{name} = getattr(getattr(res_{name}, 'eqlin', None), 'marginals', None) if res_{name} is not None else None")
+        add(f"_slack_ub_{name} = getattr(getattr(res_{name}, 'ineqlin', None), 'slack', None) if res_{name} is not None else None")
+        add(f"_reduced_{name} = getattr(res_{name}, 'reduced_cost', None) if res_{name} is not None else None")
+        add(f"{name}_dual_ub_named = None")
+        add(f"if isinstance(_dual_ub_vec_{name}, np.ndarray) and len(_ub_labels_{name}) == len(_dual_ub_vec_{name}):")
+        add(f"    {name}_dual_ub_named = dict(zip(_ub_labels_{name}, _dual_ub_vec_{name}.tolist()))")
+        add(f"{name}_dual_eq_named = None")
+        add(f"if isinstance(_dual_eq_vec_{name}, np.ndarray) and len(_eq_labels_{name}) == len(_dual_eq_vec_{name}):")
+        add(f"    {name}_dual_eq_named = dict(zip(_eq_labels_{name}, _dual_eq_vec_{name}.tolist()))")
+        add(f"{name}_reduced_named = None")
+        add(f"if isinstance(_reduced_{name}, np.ndarray) and len(_var_labels_{name}) == len(_reduced_{name}):")
+        add(f"    {name}_reduced_named = dict(zip(_var_labels_{name}, _reduced_{name}.tolist()))")
+        return {
+            0: f"{name}_x",
+            1: f"{name}_obj",
+            2: f"{name}_status",
+            3: f"_dual_ub_vec_{name}",
+            4: f"_dual_eq_vec_{name}",
+            5: f"_reduced_{name}",
+            6: f"_slack_ub_{name}",
+            7: f"{name}_dual_ub_named",
+            8: f"{name}_dual_eq_named",
+            9: f"{name}_reduced_named",
+        }
     def gen_dijkstra(node, inputs):
         G_mat = inputs[0][1] if len(inputs) > 0 else "np.zeros((0,0))"
         start = node.get("properties", {}).get("start", 0)
@@ -449,7 +478,7 @@ def generate_scope(graph_data: Dict[str, Any], initial_varmap: Dict[int, Any] = 
         return name
 
     def gen_integer_programming(node, inputs):
-        # Mixed/Integer programming with bounds, equality and optional integrality vector
+        # Mixed/Integer programming with bounds, equality, labels, gap and reduced costs
         c = inputs[0][1] if len(inputs) > 0 and inputs[0][1] is not None else "np.array([])"
         A_ub = inputs[1][1] if len(inputs) > 1 and inputs[1][1] is not None else "None"
         b_ub = inputs[2][1] if len(inputs) > 2 and inputs[2][1] is not None else "None"
@@ -457,6 +486,9 @@ def generate_scope(graph_data: Dict[str, Any], initial_varmap: Dict[int, Any] = 
         b_eq = inputs[4][1] if len(inputs) > 4 and inputs[4][1] is not None else "None"
         bounds_in = inputs[5][1] if len(inputs) > 5 and inputs[5][1] is not None else None
         integrality_in = inputs[6][1] if len(inputs) > 6 and inputs[6][1] is not None else None
+        ub_labels_in = inputs[7][1] if len(inputs) > 7 and inputs[7][1] is not None else None
+        eq_labels_in = inputs[8][1] if len(inputs) > 8 and inputs[8][1] is not None else None
+        var_labels_in = inputs[9][1] if len(inputs) > 9 and inputs[9][1] is not None else None
         sense = str(node.get("properties", {}).get("sense", "min")).lower()
         bounds_prop = node.get("properties", {}).get("bounds", "")
         integrality_prop = node.get("properties", {}).get("integrality", "")
@@ -464,7 +496,7 @@ def generate_scope(graph_data: Dict[str, Any], initial_varmap: Dict[int, Any] = 
         # Parse bounds from property string
         import re
         bounds_list = []
-        for line in re.split(r"[;\\n]", bounds_prop):
+        for line in re.split(r"[;\n]", bounds_prop):
             parts = [p.strip() for p in line.split(",") if p.strip()]
             if not parts:
                 continue
@@ -509,9 +541,9 @@ def generate_scope(graph_data: Dict[str, Any], initial_varmap: Dict[int, Any] = 
         add(f"        _ub_val = None if _ub in [None, np.inf] else _ub")
         add(f"        _bounds_{name}.append((_lb_val, _ub_val))")
         add(f"_integrality_{name} = np.asarray({integ_expr} if {integ_expr} is not None else {integ_literal!r}, dtype=int) if _c_{name}.size else np.array([], dtype=int)")
-        add(f"if _integrality_{name}.size == 0: _integrality_{name} = np.ones_like(_c_{name}, dtype=int)")
-        add(f"if _integrality_{name}.size and _integrality_{name}.size != _c_{name}.size:")
-        add(f"    _integrality_{name} = np.resize(_integrality_{name}, _c_{name}.size)")
+        add(f"_ub_labels_{name} = list({ub_labels_in}) if {ub_labels_in} is not None else []")
+        add(f"_eq_labels_{name} = list({eq_labels_in}) if {eq_labels_in} is not None else []")
+        add(f"_var_labels_{name} = list({var_labels_in}) if {var_labels_in} is not None else []")
         add(f"_sense_{name} = '{sense}'")
         add(f"_c_use_{name} = _c_{name} if _sense_{name} != 'max' else -_c_{name}")
         add(f"_constraints_{name} = []")
@@ -526,7 +558,7 @@ def generate_scope(graph_data: Dict[str, Any], initial_varmap: Dict[int, Any] = 
         add(f"else:")
         add(f"    res_{name} = scipy.optimize.linprog(_c_use_{name}, A_ub=_Aub_{name}, b_ub=_bub_{name}, A_eq=_Aeq_{name}, b_eq=_beq_{name}, bounds=_bounds_{name}, method='highs') if _c_{name}.size else None")
         add(f"    _status_note_{name} = ' (relaxed linprog fallback)'")
-        add(f"if res_{name} is not None and res_{name}.success:")
+        add(f"if res_{name} is not None and getattr(res_{name}, 'success', False):")
         add(f"    _x_{name} = res_{name}.x")
         add(f"    if _integrality_{name}.size:")
         add(f"        _x_{name} = np.array(_x_{name}, copy=True)")
@@ -540,8 +572,31 @@ def generate_scope(graph_data: Dict[str, Any], initial_varmap: Dict[int, Any] = 
         add(f"    _x_{name} = np.zeros_like(_c_{name})")
         add(f"{name}_obj = float(_c_{name}.dot(_x_{name})) if _c_{name}.size else 0.0")
         add(f"{name}_status = (res_{name}.message if res_{name} is not None else 'no result') + _status_note_{name}")
-        return {0: f"_x_{name}", 1: f"{name}_obj", 2: f"{name}_status"}
-
+        add(f"{name}_gap = getattr(res_{name}, 'mip_gap', None) if res_{name} is not None else None")
+        add(f"_reduced_{name} = getattr(res_{name}, 'reduced_cost', None) if res_{name} is not None else None")
+        add(f"{name}_reduced_named = None")
+        add(f"if isinstance(_reduced_{name}, np.ndarray) and len(_var_labels_{name}) == len(_reduced_{name}):")
+        add(f"    {name}_reduced_named = dict(zip(_var_labels_{name}, _reduced_{name}.tolist()))")
+        add(f"_dual_ub_vec_{name} = getattr(getattr(res_{name}, 'ineqlin', None), 'marginals', None) if res_{name} is not None else None")
+        add(f"_dual_eq_vec_{name} = getattr(getattr(res_{name}, 'eqlin', None), 'marginals', None) if res_{name} is not None else None")
+        add(f"{name}_dual_ub_named = None")
+        add(f"if isinstance(_dual_ub_vec_{name}, np.ndarray) and len(_ub_labels_{name}) == len(_dual_ub_vec_{name}):")
+        add(f"    {name}_dual_ub_named = dict(zip(_ub_labels_{name}, _dual_ub_vec_{name}.tolist()))")
+        add(f"{name}_dual_eq_named = None")
+        add(f"if isinstance(_dual_eq_vec_{name}, np.ndarray) and len(_eq_labels_{name}) == len(_dual_eq_vec_{name}):")
+        add(f"    {name}_dual_eq_named = dict(zip(_eq_labels_{name}, _dual_eq_vec_{name}.tolist()))")
+        return {
+            0: f"_x_{name}",
+            1: f"{name}_obj",
+            2: f"{name}_status",
+            3: f"{name}_gap",
+            4: f"_reduced_{name}",
+            5: f"{name}_reduced_named",
+            6: f"_dual_ub_vec_{name}",
+            7: f"_dual_eq_vec_{name}",
+            8: f"{name}_dual_ub_named",
+            9: f"{name}_dual_eq_named",
+        }
     def gen_constraint_builder(node, inputs):
         raw = str(node.get("properties", {}).get("constraints", ""))
         name = default_var_name(node)
@@ -550,10 +605,20 @@ def generate_scope(graph_data: Dict[str, Any], initial_varmap: Dict[int, Any] = 
         b_ub = []
         A_eq = []
         b_eq = []
-        for line in re.split(r"[;\\n]", raw):
+        labels_ub = []
+        labels_eq = []
+        ub_count = 0
+        eq_count = 0
+        for line in re.split(r"[;\n]", raw):
             ln = line.strip()
             if not ln:
                 continue
+            label = None
+            if ":" in ln:
+                label_part, ln = ln.split(":", 1)
+                if label_part.strip():
+                    label = sanitize_name(label_part.strip())
+                ln = ln.strip()
             m = re.match(r"(.+?)(<=|>=|=)(.+)")
             if not m:
                 continue
@@ -569,23 +634,356 @@ def generate_scope(graph_data: Dict[str, Any], initial_varmap: Dict[int, Any] = 
                 rhs_val = -rhs_val
                 A_ub.append(coeffs)
                 b_ub.append(rhs_val)
+                labels_ub.append(label or f"ub_{ub_count}")
+                ub_count += 1
             elif op == "<=":
                 A_ub.append(coeffs)
                 b_ub.append(rhs_val)
+                labels_ub.append(label or f"ub_{ub_count}")
+                ub_count += 1
             else:
                 A_eq.append(coeffs)
                 b_eq.append(rhs_val)
+                labels_eq.append(label or f"eq_{eq_count}")
+                eq_count += 1
         aub_var = f"{name}_A_ub"
         bub_var = f"{name}_b_ub"
         aeq_var = f"{name}_A_eq"
         beq_var = f"{name}_b_eq"
-        add(f"# Constraint builder from text (<=, >=, =)")
+        lab_ub_var = f"{name}_labels_ub"
+        lab_eq_var = f"{name}_labels_eq"
+        add(f"# Constraint builder from text (labels + <=, >=, =)")
         add(f"{aub_var} = np.array({A_ub!r}, dtype=float) if {bool(A_ub)} else None")
         add(f"{bub_var} = np.array({b_ub!r}, dtype=float) if {bool(b_ub)} else None")
         add(f"{aeq_var} = np.array({A_eq!r}, dtype=float) if {bool(A_eq)} else None")
         add(f"{beq_var} = np.array({b_eq!r}, dtype=float) if {bool(b_eq)} else None")
-        return {0: aub_var, 1: bub_var, 2: aeq_var, 3: beq_var}
+        add(f"{lab_ub_var} = {labels_ub!r}")
+        add(f"{lab_eq_var} = {labels_eq!r}")
+        return {0: aub_var, 1: bub_var, 2: aeq_var, 3: beq_var, 4: lab_ub_var, 5: lab_eq_var}
 
+    def gen_linear_model_builder(node, inputs):
+        # Parse a small LINGO-like text model into matrices/labels for LP/MIP solvers
+        import re
+        props = node.get("properties", {}) or {}
+        vars_prop = str(props.get("variables", "") or "")
+        obj_prop = str(props.get("objective", "") or "")
+        cons_prop = str(props.get("constraints", "") or "")
+        bounds_prop = str(props.get("bounds", "") or "")
+        integ_prop = str(props.get("integrality", "") or "")
+        sense = str(props.get("sense", "min")).lower()
+
+        var_names = [sanitize_name(v.strip()) for v in re.split(r"[;,\\s]+", vars_prop) if v.strip()]
+        if not var_names:
+            seen = []
+            for v in re.findall(r"[A-Za-z_][A-Za-z0-9_]*", f"{obj_prop}\n{cons_prop}"):
+                v_norm = sanitize_name(v)
+                if v_norm and v_norm not in seen:
+                    seen.append(v_norm)
+            var_names = seen
+
+        def parse_linear_expr(expr: str, vars_list: List[str]) -> List[float]:
+            coeffs = [0.0] * len(vars_list)
+            expr_clean = expr.replace("*", "")
+            expr_clean = expr_clean.replace("-", "+-")
+            for term in expr_clean.split("+"):
+                term = term.strip()
+                if not term:
+                    continue
+                m = re.match(r"([+-]?\d*\.?\d*)?([A-Za-z_]\w*)", term)
+                if not m:
+                    continue
+                coeff_str, var = m.groups()
+                if var not in vars_list:
+                    continue
+                if coeff_str in ("", "+", None):
+                    coeff = 1.0
+                elif coeff_str == "-":
+                    coeff = -1.0
+                else:
+                    try:
+                        coeff = float(coeff_str)
+                    except Exception:
+                        coeff = 0.0
+                coeffs[vars_list.index(var)] += coeff
+            return coeffs
+
+        c_vec = parse_linear_expr(obj_prop, var_names) if var_names else []
+        if sense == "max":
+            c_vec = [-v for v in c_vec]
+
+        A_ub: List[List[float]] = []
+        b_ub: List[float] = []
+        A_eq: List[List[float]] = []
+        b_eq: List[float] = []
+        ub_labels: List[str] = []
+        eq_labels: List[str] = []
+
+        for line in re.split(r"[;\\n]", cons_prop):
+            ln = line.strip()
+            if not ln or not var_names:
+                continue
+            label = None
+            if ":" in ln:
+                label_part, ln = ln.split(":", 1)
+                if label_part.strip():
+                    label = sanitize_name(label_part.strip())
+                ln = ln.strip()
+            m = re.match(r"(.+?)(<=|>=|=)(.+)")
+            if not m:
+                continue
+            lhs, op, rhs = m.groups()
+            coeffs = parse_linear_expr(lhs, var_names)
+            try:
+                rhs_val = float(rhs.strip())
+            except Exception:
+                continue
+            if op == ">=":
+                coeffs = [-c for c in coeffs]
+                rhs_val = -rhs_val
+                A_ub.append(coeffs)
+                b_ub.append(rhs_val)
+                ub_labels.append(label or f"ub_{len(ub_labels)}")
+            elif op == "<=":
+                A_ub.append(coeffs)
+                b_ub.append(rhs_val)
+                ub_labels.append(label or f"ub_{len(ub_labels)}")
+            else:
+                A_eq.append(coeffs)
+                b_eq.append(rhs_val)
+                eq_labels.append(label or f"eq_{len(eq_labels)}")
+
+        # Bounds parsing: "0,10;0,inf" or "x1:0,10"
+        bounds_tokens = []
+        for line in re.split(r"[;\\n]", bounds_prop):
+            ln = line.strip()
+            if not ln:
+                continue
+            vname = None
+            if ":" in ln:
+                vpart, ln = ln.split(":", 1)
+                vname = sanitize_name(vpart.strip())
+            parts = [p.strip() for p in ln.split(",") if p.strip()]
+            lb = None
+            ub = None
+            if parts:
+                try:
+                    lb = float(parts[0]) if parts[0].lower() not in ["none", "inf", "+inf"] else None
+                except Exception:
+                    lb = None
+            if len(parts) > 1:
+                try:
+                    ub = float(parts[1]) if parts[1].lower() not in ["none", "inf", "+inf"] else None
+                except Exception:
+                    ub = None
+            bounds_tokens.append((vname, lb, ub))
+
+        bounds_final: List[Tuple[float, float]] = []
+        for idx, v in enumerate(var_names):
+            match = next((b for b in bounds_tokens if b[0] == v), None)
+            if match:
+                bounds_final.append((match[1], match[2]))
+            elif idx < len(bounds_tokens):
+                bounds_final.append((bounds_tokens[idx][1], bounds_tokens[idx][2]))
+            else:
+                bounds_final.append((None, None))
+
+        # Integrality parsing: "x1:int;x2:bin" or "0,1,2"
+        def parse_integ_token(tok: str) -> int:
+            t = tok.strip().lower()
+            if t in ["2", "bin", "binary", "bool"]:
+                return 2
+            if t in ["1", "int", "integer"]:
+                return 1
+            return 0
+
+        integ_map = {}
+        integ_list: List[int] = []
+        for tok in re.split(r"[;\\n,]", integ_prop):
+            if not tok.strip():
+                continue
+            if ":" in tok:
+                name_part, val_part = tok.split(":", 1)
+                integ_map[sanitize_name(name_part.strip())] = parse_integ_token(val_part)
+            else:
+                integ_list.append(parse_integ_token(tok))
+
+        integ_final: List[int] = []
+        for idx, v in enumerate(var_names):
+            if v in integ_map:
+                integ_final.append(integ_map[v])
+            elif idx < len(integ_list):
+                integ_final.append(integ_list[idx])
+            else:
+                integ_final.append(0)
+
+        name = default_var_name(node)
+        c_var = f"{name}_c"
+        aub_var = f"{name}_A_ub"
+        bub_var = f"{name}_b_ub"
+        aeq_var = f"{name}_A_eq"
+        beq_var = f"{name}_b_eq"
+        bounds_var = f"{name}_bounds"
+        integ_var = f"{name}_integrality"
+        labels_var = f"{name}_labels"
+        ub_labels_var = f"{name}_labels_ub"
+        eq_labels_var = f"{name}_labels_eq"
+        add(f"# Linear model builder -> matrices/labels from text")
+        add(f"{c_var} = np.array({c_vec!r}, dtype=float) if {bool(c_vec)} else np.array([])")
+        add(f"{aub_var} = np.array({A_ub!r}, dtype=float) if {bool(A_ub)} else None")
+        add(f"{bub_var} = np.array({b_ub!r}, dtype=float) if {bool(b_ub)} else None")
+        add(f"{aeq_var} = np.array({A_eq!r}, dtype=float) if {bool(A_eq)} else None")
+        add(f"{beq_var} = np.array({b_eq!r}, dtype=float) if {bool(b_eq)} else None")
+        add(f"{bounds_var} = {bounds_final!r}")
+        add(f"{integ_var} = np.array({integ_final!r}, dtype=int) if {bool(integ_final)} else None")
+        add(f"{labels_var} = {var_names!r}")
+        add(f"{ub_labels_var} = {ub_labels!r}")
+        add(f"{eq_labels_var} = {eq_labels!r}")
+        return {
+            0: c_var,
+            1: aub_var,
+            2: bub_var,
+            3: aeq_var,
+            4: beq_var,
+            5: bounds_var,
+            6: integ_var,
+            7: ub_labels_var,
+            8: eq_labels_var,
+            9: labels_var,
+        }
+    def gen_variable_builder(node, inputs):
+        raw = str(node.get("properties", {}).get("variables", ""))
+        name = default_var_name(node)
+        import re
+        c = []
+        bounds = []
+        integrality = []
+        labels = []
+        idx = 0
+        for line in re.split(r"[;\n]", raw):
+            ln = line.strip()
+            if not ln:
+                continue
+            label = None
+            if ":" in ln:
+                label_part, ln = ln.split(":", 1)
+                if label_part.strip():
+                    label = sanitize_name(label_part.strip())
+                ln = ln.strip()
+            parts = [p.strip() for p in ln.split(",") if p.strip()]
+            if not parts:
+                continue
+            try:
+                cost = float(parts[0])
+            except Exception:
+                cost = 0.0
+            def _get_bound(val):
+                if not val:
+                    return None
+                val_l = val.lower()
+                if val_l in ["none", "inf", "+inf"]:
+                    return None
+                try:
+                    return float(val)
+                except Exception:
+                    return None
+            lb = _get_bound(parts[1]) if len(parts) > 1 else None
+            ub = _get_bound(parts[2]) if len(parts) > 2 else None
+            try:
+                integ = int(float(parts[3])) if len(parts) > 3 else 0
+            except Exception:
+                integ = 0
+            c.append(cost)
+            bounds.append((lb, ub))
+            integrality.append(integ)
+            labels.append(label or f"x{idx}")
+            idx += 1
+        c_var = f"{name}_c"
+        bounds_var = f"{name}_bounds"
+        integ_var = f"{name}_integrality"
+        labels_var = f"{name}_labels"
+        add(f"# Variable builder -> costs, bounds, integrality, labels")
+        add(f"{c_var} = np.array({c!r}, dtype=float)")
+        add(f"{bounds_var} = {bounds!r}")
+        add(f"{integ_var} = np.array({integrality!r}, dtype=int)")
+        add(f"{labels_var} = {labels!r}")
+        return {0: c_var, 1: bounds_var, 2: integ_var, 3: labels_var}
+
+    def gen_solution_report(node, inputs):
+        x = inputs[0][1] if len(inputs) > 0 else "None"
+        obj = inputs[1][1] if len(inputs) > 1 else "None"
+        status = inputs[2][1] if len(inputs) > 2 else "''"
+        dual_ub = inputs[3][1] if len(inputs) > 3 else "None"
+        dual_eq = inputs[4][1] if len(inputs) > 4 else "None"
+        reduced = inputs[5][1] if len(inputs) > 5 else "None"
+        name = default_var_name(node)
+        add(f"# Pack optimization results for display")
+        add(f"{name} = {{'status': {status}, 'objective': {obj}, 'solution': {x}, 'dual_ub': {dual_ub}, 'dual_eq': {dual_eq}, 'reduced_cost': {reduced}}}")
+        add(f"{name}_text = f\"status: {status}\nobjective: {obj}\nsolution: {x}\"")
+        return {0: name, 1: f"{name}_text"}
+
+    def gen_multiobjective_weighted(node, inputs):
+        objs = inputs[0][1] if len(inputs) > 0 else "np.zeros((1,1))"
+        weights = inputs[1][1] if len(inputs) > 1 else "None"
+        name = default_var_name(node)
+        add(f"# Multi-objective weighted sum -> single objective vector")
+        add(f"_objs_{name} = np.atleast_2d(np.asarray({objs}, dtype=float))")
+        add(f"_m_{name}, _n_{name} = _objs_{name}.shape")
+        add(f"_w_{name} = np.asarray({weights}, dtype=float).ravel() if {weights} is not None else np.ones(_m_{name})")
+        add(f"if _w_{name}.size != _m_{name}: _w_{name} = np.ones(_m_{name})")
+        add(f"_w_{name} = _w_{name} / (_w_{name}.sum() if _w_{name}.sum() != 0 else 1)")
+        add(f"{name} = _w_{name} @ _objs_{name}")
+        return name
+
+    def gen_export_lp(node, inputs):
+        c = inputs[0][1] if len(inputs) > 0 else "np.array([])"
+        A_ub = inputs[1][1] if len(inputs) > 1 else "None"
+        b_ub = inputs[2][1] if len(inputs) > 2 else "None"
+        A_eq = inputs[3][1] if len(inputs) > 3 else "None"
+        b_eq = inputs[4][1] if len(inputs) > 4 else "None"
+        bounds_in = inputs[5][1] if len(inputs) > 5 else None
+        integrality_in = inputs[6][1] if len(inputs) > 6 else None
+        labels_in = inputs[7][1] if len(inputs) > 7 else None
+        name_prop = node.get("properties", {}).get("name", "model")
+        name = default_var_name(node)
+        add(f"# Export LP-like text (copyable to solvers)")
+        add(f"_c_lp_{name} = np.asarray({c}, dtype=float).ravel()")
+        add(f"_Aub_lp_{name} = np.asarray({A_ub}, dtype=float) if {A_ub} is not None else None")
+        add(f"_bub_lp_{name} = np.asarray({b_ub}, dtype=float).ravel() if {b_ub} is not None else None")
+        add(f"_Aeq_lp_{name} = np.asarray({A_eq}, dtype=float) if {A_eq} is not None else None")
+        add(f"_beq_lp_{name} = np.asarray({b_eq}, dtype=float).ravel() if {b_eq} is not None else None")
+        add(f"_bounds_lp_{name} = {bounds_in} if {bounds_in} is not None else None")
+        add(f"if isinstance(_bounds_lp_{name}, np.ndarray): _bounds_lp_{name} = _bounds_lp_{name}.tolist()")
+        add(f"_integ_lp_{name} = np.asarray({integrality_in}, dtype=int) if {integrality_in} is not None else None")
+        add(f"_labels_lp_{name} = list({labels_in}) if {labels_in} is not None else [f'x{{i}}' for i in range(len(_c_lp_{name}))]")
+        add(f"if len(_labels_lp_{name}) != len(_c_lp_{name}): _labels_lp_{name} = [f'x{{i}}' for i in range(len(_c_lp_{name}))]")
+        add(f"_lines_lp_{name} = []")
+        add(f"_lines_lp_{name}.append('\\ Problem: {name_prop}')")
+        add(f"_obj_terms_{name} = []")
+        add(f"for _i, _coef in enumerate(_c_lp_{name}):")
+        add(f"    if _coef != 0: _obj_terms_{name}.append(f'{{_coef:g}} {{_labels_lp_{name}[_i]}}')")
+        add(f"_lines_lp_{name}.append('Minimize: ' + (' + '.join(_obj_terms_{name}) if _obj_terms_{name} else '0'))")
+        add(f"_lines_lp_{name}.append('Subject To:')")
+        add(f"if _Aub_lp_{name} is not None and _bub_lp_{name} is not None:")
+        add(f"    for _row, _rhs in zip(_Aub_lp_{name}, _bub_lp_{name}):")
+        add(f"        _terms = [f'{{_row[i]:g}} {{_labels_lp_{name}[i]}}' for i in range(len(_row)) if _row[i] != 0]")
+        add(f"        _lines_lp_{name}.append('  ' + (' + '.join(_terms) if _terms else '0') + f' <= {{_rhs:g}}')")
+        add(f"if _Aeq_lp_{name} is not None and _beq_lp_{name} is not None:")
+        add(f"    for _row, _rhs in zip(_Aeq_lp_{name}, _beq_lp_{name}):")
+        add(f"        _terms = [f'{{_row[i]:g}} {{_labels_lp_{name}[i]}}' for i in range(len(_row)) if _row[i] != 0]")
+        add(f"        _lines_lp_{name}.append('  ' + (' + '.join(_terms) if _terms else '0') + f' = {{_rhs:g}}')")
+        add(f"_lines_lp_{name}.append('Bounds:')")
+        add(f"if _bounds_lp_{name}:")
+        add(f"    for _i, (_lb, _ub) in enumerate(_bounds_lp_{name}):")
+        add(f"        _lb_txt = '-inf' if _lb in [None, -np.inf] else f'{{_lb:g}}'")
+        add(f"        _ub_txt = 'inf' if _ub in [None, np.inf] else f'{{_ub:g}}'")
+        add(f"        _lines_lp_{name}.append(f'  {{_lb_txt}} <= {{_labels_lp_{name}[_i]}} <= {{_ub_txt}}')")
+        add(f"_lines_lp_{name}.append('Integrality:')")
+        add(f"if _integ_lp_{name} is not None and _integ_lp_{name}.size:")
+        add(f"    for _i, _itype in enumerate(_integ_lp_{name}):")
+        add(f"        if _itype == 1: _lines_lp_{name}.append(f'  int {{_labels_lp_{name}[_i]}}')")
+        add(f"        if _itype == 2: _lines_lp_{name}.append(f'  bin {{_labels_lp_{name}[_i]}}')")
+        add(f"{name} = '\n'.join(_lines_lp_{name})")
+        return name
     def gen_quadratic_programming(node, inputs):
         Q = inputs[0][1] if len(inputs) > 0 else "np.eye(2)"
         c = inputs[1][1] if len(inputs) > 1 else "np.zeros(2)"
@@ -1444,15 +1842,145 @@ def generate_scope(graph_data: Dict[str, Any], initial_varmap: Dict[int, Any] = 
         return name
 
     def gen_nlp(node, inputs):
+        # General nonlinear programming with optional bounds, constraint text, variable names and max/min sense
+        import re
         x0 = inputs[0][1] if len(inputs) > 0 else "np.array([0,0])"
         name = default_var_name(node)
-        obj_str = node.get("properties", {}).get("objective", "x[0]**2 + x[1]**2")
-        method = node.get("properties", {}).get("method", "SLSQP")
-        add(f"# Non-linear Programming")
-        add(f"def obj_{name}(x): return {obj_str}")
-        add(f"res_{name} = scipy.optimize.minimize(obj_{name}, {x0}, method='{method}')")
-        add(f"{name} = res_{name}.x")
-        return name
+        props = node.get("properties", {}) or {}
+        obj_str = props.get("objective", "x[0]**2 + x[1]**2")
+        method = props.get("method", "SLSQP")
+        constraints_prop = str(props.get("constraints", "") or "")
+        bounds_prop = str(props.get("bounds", "") or "")
+        variables_prop = str(props.get("variables", "") or "")
+        sense = str(props.get("sense", "min")).lower()
+
+        # Parse variable names, auto-detect from expressions if not provided
+        var_names = [sanitize_name(v.strip()) for v in re.split(r"[,\\s]+", variables_prop) if v.strip()]
+        if not var_names:
+            seen: List[str] = []
+            for v in re.findall(r"[A-Za-z_][A-Za-z0-9_]*", f"{obj_str}\n{constraints_prop}"):
+                v_norm = sanitize_name(v)
+                if v_norm and v_norm not in seen and not v_norm.isdigit():
+                    seen.append(v_norm)
+            var_names = seen
+
+        # Parse bounds "0,10;0,inf" or "x1:0,10"
+        bounds_list = []
+        for line in re.split(r"[;\\n]", bounds_prop):
+            if not line.strip():
+                continue
+            entry = line.strip()
+            vname = None
+            if ":" in entry:
+                vpart, entry = entry.split(":", 1)
+                vname = sanitize_name(vpart.strip())
+            parts = [p.strip() for p in entry.split(",") if p.strip()]
+            lb = None
+            ub = None
+            if parts:
+                try:
+                    lb = float(parts[0]) if parts[0].lower() not in ["none", "inf", "+inf"] else None
+                except Exception:
+                    lb = None
+            if len(parts) > 1:
+                try:
+                    ub = float(parts[1]) if parts[1].lower() not in ["none", "inf", "+inf"] else None
+                except Exception:
+                    ub = None
+            bounds_list.append((vname, lb, ub))
+
+        # Parsed constraints -> list of (lhs, op, rhs, label)
+        parsed_constraints: List[Tuple[str, str, str, str]] = []
+        for line in re.split(r"[;\\n]", constraints_prop):
+            ln = line.strip()
+            if not ln:
+                continue
+            label = None
+            if ":" in ln:
+                label_part, ln = ln.split(":", 1)
+                if label_part.strip():
+                    label = sanitize_name(label_part.strip())
+                ln = ln.strip()
+            m = re.match(r"(.+?)(<=|>=|=)(.+)")
+            if not m:
+                continue
+            lhs, op, rhs = m.groups()
+            parsed_constraints.append((lhs.strip(), op, rhs.strip(), label or ""))
+
+        var_names_literal = var_names
+        bounds_literal = bounds_list
+        constraint_labels = [pc[3] for pc in parsed_constraints]
+
+        add(f"# Non-linear Programming (bounds + constraints + sense)")
+        add(f"_x0_{name} = np.atleast_1d(np.asarray({x0} if {x0} is not None else np.zeros(2), dtype=float))")
+        add(f"_n_{name} = _x0_{name}.size if _x0_{name}.size else 2")
+        add(f"_var_names_{name} = {var_names_literal!r}")
+        add(f"if not _var_names_{name} or len(_var_names_{name}) != _n_{name}:")
+        add(f"    _var_names_{name} = [f'x{{i}}' for i in range(_n_{name})]")
+        add(f"_sense_{name} = '{sense}'")
+
+        add(f"_bounds_raw_{name} = {bounds_literal!r}")
+        add(f"_bounds_map_{name} = {{k: (lb, ub) for (k, lb, ub) in _bounds_raw_{name} if k}}")
+        add(f"_bounds_{name} = []")
+        add(f"for _i in range(_n_{name}):")
+        add(f"    _vname = _var_names_{name}[_i] if _i < len(_var_names_{name}) else f'x{{_i}}'")
+        add(f"    if _vname in _bounds_map_{name}:")
+        add(f"        _bounds_{name}.append(_bounds_map_{name}[_vname])")
+        add(f"    elif _i < len(_bounds_raw_{name}):")
+        add(f"        _bounds_{name}.append((_bounds_raw_{name}[_i][1], _bounds_raw_{name}[_i][2]))")
+        add(f"    else:")
+        add(f"        _bounds_{name}.append((None, None))")
+        add(f"_bounds_any_{name} = any([(b[0] is not None or b[1] is not None) for b in _bounds_{name}])")
+        add(f"_bounds_use_{name} = _bounds_{name} if _bounds_any_{name} else None")
+
+        add(f"def _make_env_{name}(vec):")
+        add(f"    _env = {{'x': vec, 'np': np}}")
+        add(f"    for _i, _nm in enumerate(_var_names_{name}):")
+        add(f"        try: _env[_nm] = vec[_i]")
+        add(f"        except Exception: _env[_nm] = 0")
+        add(f"    return _env")
+
+        add(f"def obj_{name}(x):")
+        add(f"    _env = _make_env_{name}(x)")
+        add(f"    _val = eval({obj_str!r}, {{'np': np, '__builtins__': {{}}}}, _env)")
+        add(f"    return -_val if _sense_{name} == 'max' else _val")
+
+        add(f"_constraints_{name} = []")
+        add(f"_constraint_labels_{name} = {constraint_labels!r}")
+        for idx, (lhs, op, rhs, _) in enumerate(parsed_constraints):
+            fun_name = f"_con_{name}_{idx}"
+            if op == "<=":
+                add(f"def {fun_name}(x):")
+                add(f"    _env = _make_env_{name}(x)")
+                add(f"    return eval({rhs!r}, {{'np': np, '__builtins__': {{}}}}, _env) - eval({lhs!r}, {{'np': np, '__builtins__': {{}}}}, _env)")
+                add(f"_constraints_{name}.append({{'type': 'ineq', 'fun': {fun_name}}})")
+            elif op == ">=":
+                add(f"def {fun_name}(x):")
+                add(f"    _env = _make_env_{name}(x)")
+                add(f"    return eval({lhs!r}, {{'np': np, '__builtins__': {{}}}}, _env) - eval({rhs!r}, {{'np': np, '__builtins__': {{}}}}, _env)")
+                add(f"_constraints_{name}.append({{'type': 'ineq', 'fun': {fun_name}}})")
+            else:
+                add(f"def {fun_name}(x):")
+                add(f"    _env = _make_env_{name}(x)")
+                add(f"    return eval({lhs!r}, {{'np': np, '__builtins__': {{}}}}, _env) - eval({rhs!r}, {{'np': np, '__builtins__': {{}}}}, _env)")
+                add(f"_constraints_{name}.append({{'type': 'eq', 'fun': {fun_name}}})")
+
+        add(f"res_{name} = scipy.optimize.minimize(obj_{name}, _x0_{name}, method='{method}', bounds=_bounds_use_{name}, constraints=_constraints_{name}) if _x0_{name}.size else None")
+        add(f"{name}_x = res_{name}.x if res_{name} is not None and getattr(res_{name}, 'x', None) is not None else _x0_{name}")
+        add(f"{name}_obj = obj_{name}({name}_x) if res_{name} is not None else None")
+        add(f"if _sense_{name} == 'max' and {name}_obj is not None: {name}_obj = -{name}_obj")
+        add(f"{name}_status = res_{name}.message if res_{name} is not None else 'no result'")
+        add(f"{name}_constraints = []")
+        add(f"for _i, _con in enumerate(_constraints_{name}):")
+        add(f"    try:")
+        add(f"        _val = float(_con['fun']({name}_x))")
+        add(f"    except Exception:")
+        add(f"        _val = None")
+        add(f"    _ctype = _con.get('type', 'ineq')")
+        add(f"    _label = _constraint_labels_{name}[_i] if _i < len(_constraint_labels_{name}) else f'c{{_i}}'")
+        add(f"    {name}_constraints.append({{'name': _label, 'type': _ctype, 'residual': _val}})")
+
+        return {0: f"{name}_x", 1: f"{name}_obj", 2: f"{name}_status", 3: f"{name}_constraints", 4: f"_var_names_{name}"}
 
     def gen_chisquare(node, inputs):
         obs = inputs[0][1] if len(inputs) > 0 else "[]"
@@ -2656,7 +3184,12 @@ def generate_scope(graph_data: Dict[str, Any], initial_varmap: Dict[int, Any] = 
         "class/naive_bayes": gen_naive_bayes,
 
         # Opt
+        "opt/multiobjective_weighted": gen_multiobjective_weighted,
+        "opt/linear_model_builder": gen_linear_model_builder,
+        "opt/variable_builder": gen_variable_builder,
         "opt/constraint_builder": gen_constraint_builder,
+        "opt/export_lp": gen_export_lp,
+        "opt/solution_report": gen_solution_report,
         "opt/knapsack": gen_knapsack,
         "opt/tsp": gen_tsp,
         "opt/vrp": gen_vrp,

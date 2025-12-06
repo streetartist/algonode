@@ -44,6 +44,8 @@ AlgoNode is a visual node-based editor for mathematical modeling and algorithm d
 | Combinatorial (TSP/VRP/Knapsack) | Combinatorial optimization (TSP/VRP/Knapsack) |
 
 > Linear/Integer Programming nodes now handle equality constraints, variable bounds, and min/max objectives. A new **Constraint Builder** node converts text like `1,2<=10;1,-1=3` into ready-to-use A/b matrices for the solvers.
+- New **Linear Model (Text)** node: write objective/constraints/bounds/integrality in a compact LINGO/Matlab style and emit c/A/b/labels directly usable by LP/MIP solvers.
+- Upgraded non-linear programming node: supports variable names, bounds, textual equality/inequality constraints, min/max switching, and outputs objective/status plus constraint residuals.
 
 #### 2. Evaluation & Decision
 | Node | Description |
