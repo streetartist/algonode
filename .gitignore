@@ -148,3 +148,4 @@ logs/
 
 # User data (if sensitive)
 # user_library.json
+.user_project
